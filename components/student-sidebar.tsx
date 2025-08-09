@@ -23,8 +23,6 @@ import { useState } from "react"
 interface StudentSidebarProps {
   activeTab: string
   onTabChange: (tab: string) => void
-  collapsed?: boolean
-  onToggleCollapse?: () => void
   className?: string
 }
 
@@ -38,7 +36,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-blue-100",
     activeGradient: "from-blue-500 to-blue-600",
     description: "Overview & Analytics",
-    count: null,
   },
   {
     id: "opportunities",
@@ -49,7 +46,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-purple-100",
     activeGradient: "from-purple-500 to-purple-600",
     description: "Browse Internships",
-    count: "5 New",
   },
   {
     id: "noc-request",
@@ -60,7 +56,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-emerald-100",
     activeGradient: "from-emerald-500 to-emerald-600",
     description: "Certificate Requests",
-    count: null,
   },
   {
     id: "weekly-reports",
@@ -71,7 +66,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-orange-100",
     activeGradient: "from-orange-500 to-orange-600",
     description: "Submit Reports",
-    count: "2 Due",
   },
   {
     id: "certificates",
@@ -82,7 +76,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-amber-100",
     activeGradient: "from-amber-500 to-amber-600",
     description: "Completion Certs",
-    count: null,
   },
   {
     id: "status-tracking",
@@ -93,7 +86,6 @@ const sidebarItems = [
     hoverColor: "hover:bg-indigo-100",
     activeGradient: "from-indigo-500 to-indigo-600",
     description: "Track Progress",
-    count: null,
   },
   {
     id: "notifications",
@@ -104,28 +96,26 @@ const sidebarItems = [
     hoverColor: "hover:bg-red-100",
     activeGradient: "from-red-500 to-red-600",
     description: "Updates & Alerts",
-    count: "3",
+    badge: "3",
   },
 ]
 
-function SidebarContent({ activeTab, onTabChange, collapsed = false, className }: StudentSidebarProps) {
+function SidebarContent({ activeTab, onTabChange, className }: StudentSidebarProps) {
   return (
     <div className={cn("h-full flex flex-col bg-transparent", className)}>
       {/* Modern Header */}
       <div className="p-6 border-b border-gray-200/30">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="flex items-center justify-center w-12 h-12 bg-gradient-primary rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-600 rounded-2xl shadow-lg">
               <Sparkles className="h-6 w-6 text-white" />
             </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white animate-pulse-glow"></div>
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
           </div>
-          {!collapsed && (
-            <div className="animate-fade-scale">
-              <h2 className="font-bold text-gray-900 text-xl">IMS</h2>
-              <p className="text-xs text-gray-500 font-medium">Internship Management</p>
-            </div>
-          )}
+          <div>
+            <h2 className="font-bold text-gray-900 text-lg">Student Portal</h2>
+            <p className="text-xs text-gray-500 font-medium">Internship Management</p>
+          </div>
         </div>
       </div>
 
@@ -137,10 +127,9 @@ function SidebarContent({ activeTab, onTabChange, collapsed = false, className }
               <Button
                 variant="ghost"
                 className={cn(
-                  "w-full justify-start h-auto rounded-xl transition-all duration-300 group relative overflow-hidden",
-                  collapsed ? "p-3" : "p-3",
+                  "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
                   activeTab === item.id
-                    ? "bg-gradient-to-r text-white shadow-lg transform scale-[1.02] shadow-colored"
+                    ? "bg-gradient-to-r text-white shadow-lg transform scale-[1.02]"
                     : `text-gray-600 hover:text-gray-900 ${item.hoverColor} hover:shadow-md hover:scale-[1.01]`,
                 )}
                 style={
@@ -162,7 +151,7 @@ function SidebarContent({ activeTab, onTabChange, collapsed = false, className }
                 <div className="flex items-center gap-3 w-full relative z-10">
                   <div
                     className={cn(
-                      "flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-300 relative",
+                      "flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-300",
                       activeTab === item.id ? "bg-white/20 shadow-sm" : "bg-gray-100 group-hover:bg-white/80",
                     )}
                   >
@@ -173,37 +162,29 @@ function SidebarContent({ activeTab, onTabChange, collapsed = false, className }
                       )}
                     />
                   </div>
-                  {!collapsed && (
-                    <div className="flex-1 text-left">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{item.label}</span>
-                        {item.count && (
-                          <Badge
-                            className={cn(
-                              "text-xs px-2 py-0.5",
-                              activeTab === item.id
-                                ? "bg-white/20 text-white border-white/30"
-                                : item.count.includes("New")
-                                  ? "bg-blue-500 text-white animate-pulse-glow"
-                                  : item.count.includes("Due")
-                                    ? "bg-amber-500 text-white animate-pulse-glow"
-                                    : "bg-red-500 text-white animate-pulse-glow",
-                            )}
-                          >
-                            {item.count}
-                          </Badge>
-                        )}
-                      </div>
-                      <p
-                        className={cn(
-                          "text-xs mt-0.5 transition-colors duration-300",
-                          activeTab === item.id ? "text-white/80" : "text-gray-500",
-                        )}
-                      >
-                        {item.description}
-                      </p>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{item.label}</span>
+                      {item.badge && (
+                        <Badge
+                          className={cn(
+                            "text-xs px-2 py-0.5 animate-pulse",
+                            activeTab === item.id ? "bg-white/20 text-white border-white/30" : "bg-red-500 text-white",
+                          )}
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
                     </div>
-                  )}
+                    <p
+                      className={cn(
+                        "text-xs mt-0.5 transition-colors duration-300",
+                        activeTab === item.id ? "text-white/80" : "text-gray-500",
+                      )}
+                    >
+                      {item.description}
+                    </p>
+                  </div>
                 </div>
               </Button>
             </div>
@@ -211,73 +192,55 @@ function SidebarContent({ activeTab, onTabChange, collapsed = false, className }
         </div>
       </ScrollArea>
 
-      {/* Modern Footer */}
-      {!collapsed && (
-        <div className="p-4 border-t border-gray-200/30 space-y-4">
-          {/* Progress Section */}
-          <div className="glass-card rounded-2xl p-4 border border-blue-100">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
-                <TrendingUp className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Overall Progress</p>
-                <p className="text-xs text-gray-600">Internship Journey</p>
-              </div>
+      {/* Modern Footer with Progress */}
+      <div className="p-4 border-t border-gray-200/30">
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-4 border border-blue-100">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl shadow-lg">
+              <TrendingUp className="h-5 w-5 text-white" />
             </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-600">Completion</span>
-                <span className="font-semibold text-blue-600">78%</span>
-              </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: "78%" }}></div>
-              </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Overall Progress</p>
+              <p className="text-xs text-gray-600">Internship Journey</p>
             </div>
           </div>
-
-          {/* User Profile Section */}
-          <div className="flex items-center gap-3 p-3 glass-card rounded-xl border border-gray-200/50 hover-lift">
-            <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-xl shadow-lg">
-              <User className="h-5 w-5 text-white" />
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-600">Completion</span>
+              <span className="font-semibold text-blue-600">78%</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">D23it176</p>
-              <p className="text-xs text-gray-500">Roll No: 21CE001</p>
-            </div>
-            <div className="status-dot status-approved"></div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="glass-card p-3 rounded-xl text-center">
-              <div className="text-lg font-bold text-emerald-600">8.5</div>
-              <div className="text-xs text-gray-500">CGPA</div>
-            </div>
-            <div className="glass-card p-3 rounded-xl text-center">
-              <div className="text-lg font-bold text-blue-600">6th</div>
-              <div className="text-xs text-gray-500">Semester</div>
+            <div className="bg-white/80 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-blue-600 to-purple-600 h-2 rounded-full transition-all duration-1000 ease-out animate-pulse"
+                style={{ width: "78%" }}
+              ></div>
             </div>
           </div>
         </div>
-      )}
+
+        {/* User Profile Section */}
+        <div className="mt-4 flex items-center gap-3 p-3 bg-white/50 rounded-xl border border-gray-200/50">
+          <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-gray-600 to-gray-700 rounded-lg">
+            <User className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">John Doe</p>
+            <p className="text-xs text-gray-500">Student ID: 21CE001</p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-export function StudentSidebar({
-  activeTab,
-  onTabChange,
-  collapsed = false,
-  onToggleCollapse,
-}: Omit<StudentSidebarProps, "className">) {
+export function StudentSidebar({ activeTab, onTabChange }: Omit<StudentSidebarProps, "className">) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
     <>
       {/* Desktop Sidebar */}
       <div className="hidden lg:block h-full">
-        <SidebarContent activeTab={activeTab} onTabChange={onTabChange} collapsed={collapsed} />
+        <SidebarContent activeTab={activeTab} onTabChange={onTabChange} />
       </div>
 
       {/* Mobile Sidebar */}
@@ -292,14 +255,13 @@ export function StudentSidebar({
             <span className="sr-only">Toggle navigation menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-80 glass-sidebar">
+        <SheetContent side="left" className="p-0 w-72 glass-sidebar">
           <SidebarContent
             activeTab={activeTab}
             onTabChange={(tab) => {
               onTabChange(tab)
               setIsOpen(false)
             }}
-            collapsed={false}
           />
         </SheetContent>
       </Sheet>

@@ -66,18 +66,17 @@ export default function DashboardRootLayout({
     }
 
     getSessionAndProfile()
-const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((event, session) => {
-    if (!session) {
-      router.push("/") // Redirect to landing if logged out
-    }
-  })
 
-  return () => {
-    subscription.unsubscribe()
-  }
-}, [router, pathname])
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        router.push("/") // Redirect to landing if logged out
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router, pathname])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
