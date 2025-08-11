@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
+import { supabase, signInWithGoogle } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,9 @@ import {
   Award,
   TrendingUp,
   Globe,
+  Star,
+  Zap,
+  Lock,
 } from "lucide-react"
 
 export default function LandingPage() {
@@ -26,96 +29,60 @@ export default function LandingPage() {
   const [signingIn, setSigningIn] = useState(false)
 
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        // User is logged in, fetch their profile to get the role
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .single()
+    const checkSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-        if (error && error.code === "PGRST116") {
-          // No row found - user just signed up via OAuth and their profile isn't in 'profiles' yet.
-          // Create the profile with a default role and then redirect.
-          const email = session.user.email || ""
-          let role: "student" | "teacher" | "tp_officer" | "super_admin" = "student"
+        if (session?.user) {
+          // Check if user has a profile
+          const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).single()
 
-          // Check email domain for role assignment
-          if (email.endsWith("@charusat.ac.in")) {
-            // Check for pre-registered special roles
-            if (email === "tp.officer@charusat.ac.in") {
-              role = "tp_officer"
-            } else if (email === "admin@charusat.ac.in") {
-              role = "super_admin"
-            } else {
-              role = "teacher" // Default for .ac.in domain
-            }
-          } else if (email.endsWith("@charusat.edu.in")) {
-            role = "student" // Default for .edu.in domain
-          } else {
-            // Invalid domain - sign out and show error
-            await supabase.auth.signOut()
-            router.push("/auth/error?error=invalid_domain")
+          if (profile?.role) {
+            router.push(`/dashboard/${profile.role}`)
             return
           }
-
-          const { error: insertError } = await supabase.from("profiles").insert({
-            id: session.user.id,
-            email: email,
-            name: session.user.user_metadata.full_name || session.user.email,
-            avatar_url: session.user.user_metadata.avatar_url,
-            role: role,
-          })
-
-          if (insertError) {
-            console.error("Error inserting new profile:", insertError)
-            await supabase.auth.signOut()
-            router.push("/auth/error?error=ProfileCreationFailed")
-            return
-          }
-          router.push(`/dashboard/${role}`)
-        } else if (profile) {
-          router.push(`/dashboard/${profile.role}`)
-        } else if (error) {
-          console.error("Error fetching profile:", error)
-          await supabase.auth.signOut()
-          router.push("/auth/error?error=ProfileFetchFailed")
         }
-      } else {
-        setLoading(false) // Not logged in, show sign-in button
-      }
-    })
 
-    // Check initial session state
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+        setLoading(false)
+      } catch (error) {
+        console.error("Session check error:", error)
+        setLoading(false)
+      }
+    }
+
+    checkSession()
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || (!session && !loading)) {
         setLoading(false)
       }
     })
 
-    return () => {
-      authListener.subscription.unsubscribe()
-    }
-  }, [router])
+    return () => subscription.unsubscribe()
+  }, [router, loading])
 
   const handleSignIn = async () => {
     setSigningIn(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    })
 
-    if (error) {
-      console.error("Error signing in:", error)
+    try {
+      const { error } = await signInWithGoogle()
+
+      if (error) {
+        console.error("Sign in error:", error)
+        setSigningIn(false)
+        // The error will be handled by the auth callback
+        return
+      }
+
+      // Don't set signingIn to false here as redirect will happen
+    } catch (error) {
+      console.error("Unexpected sign in error:", error)
       setSigningIn(false)
-      router.push(`/auth/error?error=${error.message}`)
     }
   }
 
@@ -133,21 +100,23 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+      <nav className="bg-white/90 backdrop-blur-md border-b border-white/20 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg">
+              <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg shadow-lg">
                 <GraduationCap className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">IMS</h1>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  IMS
+                </h1>
                 <p className="text-xs text-gray-500">Internship Management</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <Badge variant="outline" className="hidden sm:flex">
-                <Globe className="h-3 w-3 mr-1" />
+              <Badge variant="outline" className="hidden sm:flex bg-white/50 border-blue-200">
+                <Globe className="h-3 w-3 mr-1 text-blue-600" />
                 CHARUSAT University
               </Badge>
             </div>
@@ -157,25 +126,31 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <div className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-indigo-600/10"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 relative">
           <div className="text-center">
             <div className="flex justify-center mb-8">
-              <div className="flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-lg">
-                <GraduationCap className="h-10 w-10 text-white" />
+              <div className="relative">
+                <div className="flex items-center justify-center w-24 h-24 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl shadow-2xl">
+                  <GraduationCap className="h-12 w-12 text-white" />
+                </div>
+                <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center">
+                  <Star className="h-4 w-4 text-white" />
+                </div>
               </div>
             </div>
 
-            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
-              Internship Management
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-                System
+            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6 tracking-tight">
+              Internship
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 animate-gradient">
+                Management System
               </span>
             </h1>
 
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Streamline your internship journey with our comprehensive platform designed for
-              <span className="font-semibold text-blue-600"> CHARUSAT University</span>. Manage applications, track
-              progress, and achieve your career goals.
+            <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed">
+              Transform your internship journey with our comprehensive platform designed for
+              <span className="font-semibold text-blue-600"> CHARUSAT University</span>. Streamline applications, track
+              progress, and unlock your career potential.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
@@ -183,7 +158,7 @@ export default function LandingPage() {
                 onClick={handleSignIn}
                 disabled={signingIn}
                 size="lg"
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-10 py-6 text-lg font-semibold shadow-2xl hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105 rounded-xl"
               >
                 {signingIn ? (
                   <>
@@ -210,27 +185,31 @@ export default function LandingPage() {
                         d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                       />
                     </svg>
-                    Sign In with Google
+                    Continue with Google
+                    <ArrowRight className="w-5 h-5 ml-2" />
                   </>
                 )}
               </Button>
-
-              <p className="text-sm text-gray-500">Use your @charusat.edu.in or @charusat.ac.in email</p>
             </div>
 
+            <p className="text-sm text-gray-500 mb-8">
+              Use your <span className="font-semibold">@charusat.edu.in</span> or{" "}
+              <span className="font-semibold">@charusat.ac.in</span> email address
+            </p>
+
             {/* Trust Indicators */}
-            <div className="flex flex-wrap justify-center items-center gap-6 text-sm text-gray-500">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
+            <div className="flex flex-wrap justify-center items-center gap-8 text-sm text-gray-500">
+              <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-full">
+                <Lock className="h-4 w-4 text-green-500" />
                 <span>Secure Authentication</span>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
+              <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-full">
+                <Zap className="h-4 w-4 text-blue-500" />
                 <span>Real-time Updates</span>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>24/7 Support</span>
+              <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-full">
+                <CheckCircle className="h-4 w-4 text-indigo-500" />
+                <span>24/7 Available</span>
               </div>
             </div>
           </div>
@@ -238,241 +217,248 @@ export default function LandingPage() {
       </div>
 
       {/* Features Section */}
-      <div className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Designed for Every Role</h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Our platform caters to all stakeholders in the internship ecosystem
+      <div className="py-24 bg-white relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-gray-50/50 to-white"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+          <div className="text-center mb-20">
+            <Badge variant="outline" className="mb-4 bg-blue-50 text-blue-700 border-blue-200">
+              Role-Based Access
+            </Badge>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+              Designed for <span className="text-blue-600">Every Role</span>
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Our platform provides tailored experiences for all stakeholders in the internship ecosystem
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <Card className="group hover:shadow-xl transition-all duration-300 border-0 shadow-lg">
-              <CardHeader className="text-center pb-4">
-                <div className="flex justify-center mb-4">
-                  <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                    <GraduationCap className="h-8 w-8 text-white" />
+            {[
+              {
+                icon: GraduationCap,
+                title: "Students",
+                description:
+                  "Apply for internships, track applications, submit reports, and manage your complete internship journey",
+                features: ["Applications", "Reports", "Certificates", "Progress Tracking"],
+                color: "from-blue-500 to-blue-600",
+                bgColor: "bg-blue-50",
+              },
+              {
+                icon: BookOpen,
+                title: "Teachers",
+                description:
+                  "Supervise student internships, review reports, provide guidance, and track student progress effectively",
+                features: ["Supervision", "Reviews", "Guidance", "Mentoring"],
+                color: "from-green-500 to-green-600",
+                bgColor: "bg-green-50",
+              },
+              {
+                icon: Building2,
+                title: "T&P Officers",
+                description:
+                  "Manage internship programs, coordinate with companies, oversee placements, and maintain industry relations",
+                features: ["Programs", "Companies", "Placements", "Analytics"],
+                color: "from-purple-500 to-purple-600",
+                bgColor: "bg-purple-50",
+              },
+              {
+                icon: Shield,
+                title: "Administrators",
+                description:
+                  "Complete system access, user management, comprehensive oversight, and system configuration control",
+                features: ["Management", "Oversight", "Configuration", "Reports"],
+                color: "from-red-500 to-red-600",
+                bgColor: "bg-red-50",
+              },
+            ].map((role, index) => (
+              <Card
+                key={index}
+                className="group hover:shadow-2xl transition-all duration-500 border-0 shadow-lg hover:-translate-y-2 bg-white/80 backdrop-blur-sm"
+              >
+                <CardHeader className="text-center pb-4">
+                  <div className="flex justify-center mb-6">
+                    <div
+                      className={`flex items-center justify-center w-20 h-20 bg-gradient-to-r ${role.color} rounded-3xl group-hover:scale-110 transition-transform duration-300 shadow-lg`}
+                    >
+                      <role.icon className="h-10 w-10 text-white" />
+                    </div>
                   </div>
-                </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Students</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center">
-                <CardDescription className="text-gray-600 leading-relaxed">
-                  Apply for internships, track applications, submit reports, and manage your internship journey
-                  seamlessly
-                </CardDescription>
-                <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                  <Badge variant="secondary" className="text-xs">
-                    Applications
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Reports
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Certificates
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+                  <CardTitle className="text-2xl font-bold text-gray-900 mb-2">{role.title}</CardTitle>
+                </CardHeader>
 
-            <Card className="group hover:shadow-xl transition-all duration-300 border-0 shadow-lg">
-              <CardHeader className="text-center pb-4">
-                <div className="flex justify-center mb-4">
-                  <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                    <BookOpen className="h-8 w-8 text-white" />
-                  </div>
-                </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Teachers</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center">
-                <CardDescription className="text-gray-600 leading-relaxed">
-                  Supervise student internships, review reports, provide guidance, and track student progress
-                  effectively
-                </CardDescription>
-                <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                  <Badge variant="secondary" className="text-xs">
-                    Supervision
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Reviews
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Guidance
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+                <CardContent className="text-center space-y-6">
+                  <CardDescription className="text-gray-600 leading-relaxed text-base">
+                    {role.description}
+                  </CardDescription>
 
-            <Card className="group hover:shadow-xl transition-all duration-300 border-0 shadow-lg">
-              <CardHeader className="text-center pb-4">
-                <div className="flex justify-center mb-4">
-                  <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                    <Building2 className="h-8 w-8 text-white" />
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {role.features.map((feature, featureIndex) => (
+                      <Badge
+                        key={featureIndex}
+                        variant="secondary"
+                        className={`text-xs px-3 py-1 ${role.bgColor} hover:bg-opacity-80 transition-colors`}
+                      >
+                        {feature}
+                      </Badge>
+                    ))}
                   </div>
-                </div>
-                <CardTitle className="text-xl font-bold text-gray-900">T&P Officers</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center">
-                <CardDescription className="text-gray-600 leading-relaxed">
-                  Manage internship programs, coordinate with companies, oversee placements, and maintain industry
-                  relations
-                </CardDescription>
-                <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                  <Badge variant="secondary" className="text-xs">
-                    Programs
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Companies
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Placements
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="group hover:shadow-xl transition-all duration-300 border-0 shadow-lg">
-              <CardHeader className="text-center pb-4">
-                <div className="flex justify-center mb-4">
-                  <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-red-500 to-red-600 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                    <Shield className="h-8 w-8 text-white" />
-                  </div>
-                </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Administrators</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center">
-                <CardDescription className="text-gray-600 leading-relaxed">
-                  Full system access, user management, comprehensive oversight, and system configuration control
-                </CardDescription>
-                <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                  <Badge variant="secondary" className="text-xs">
-                    Management
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Oversight
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    Configuration
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Stats Section */}
-      <div className="py-20 bg-gradient-to-r from-blue-600 to-indigo-600">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Trusted by CHARUSAT Community</h2>
-            <p className="text-xl text-blue-100 max-w-2xl mx-auto">
-              Join thousands of students and faculty already using our platform
+      <div className="py-24 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+          <div className="text-center mb-20">
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+              Trusted by the <span className="text-yellow-300">CHARUSAT Community</span>
+            </h2>
+            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+              Join thousands of students, faculty, and industry partners already transforming their internship
+              experience
             </p>
           </div>
 
           <div className="grid md:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <Users className="h-12 w-12 text-blue-200" />
+            {[
+              { icon: Users, value: "1,500+", label: "Active Students", color: "text-blue-200" },
+              { icon: Building2, value: "200+", label: "Partner Companies", color: "text-indigo-200" },
+              { icon: Award, value: "98%", label: "Success Rate", color: "text-purple-200" },
+              { icon: TrendingUp, value: "24/7", label: "Support Available", color: "text-yellow-200" },
+            ].map((stat, index) => (
+              <div key={index} className="text-center group">
+                <div className="flex justify-center mb-6">
+                  <div className="p-4 bg-white/10 rounded-2xl group-hover:bg-white/20 transition-colors duration-300">
+                    <stat.icon className={`h-12 w-12 ${stat.color}`} />
+                  </div>
+                </div>
+                <div className="text-5xl font-bold text-white mb-3 group-hover:scale-110 transition-transform duration-300">
+                  {stat.value}
+                </div>
+                <div className="text-blue-100 text-lg">{stat.label}</div>
               </div>
-              <div className="text-4xl font-bold text-white mb-2">1,200+</div>
-              <div className="text-blue-200">Active Students</div>
-            </div>
-
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <Building2 className="h-12 w-12 text-blue-200" />
-              </div>
-              <div className="text-4xl font-bold text-white mb-2">150+</div>
-              <div className="text-blue-200">Partner Companies</div>
-            </div>
-
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <Award className="h-12 w-12 text-blue-200" />
-              </div>
-              <div className="text-4xl font-bold text-white mb-2">95%</div>
-              <div className="text-blue-200">Success Rate</div>
-            </div>
-
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <TrendingUp className="h-12 w-12 text-blue-200" />
-              </div>
-              <div className="text-4xl font-bold text-white mb-2">24/7</div>
-              <div className="text-blue-200">Support Available</div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* CTA Section */}
-      <div className="py-20 bg-gray-50">
-        <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">Ready to Start Your Internship Journey?</h2>
-          <p className="text-xl text-gray-600 mb-8">
-            Join the CHARUSAT community and take the first step towards your career success
+      <div className="py-24 bg-gradient-to-b from-gray-50 to-white relative">
+        <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8 relative">
+          <div className="mb-8">
+            <Badge
+              variant="outline"
+              className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 text-sm px-4 py-2"
+            >
+              Ready to Get Started?
+            </Badge>
+          </div>
+
+          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-8 leading-tight">
+            Begin Your
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+              {" "}
+              Internship Journey
+            </span>
+          </h2>
+
+          <p className="text-xl text-gray-600 mb-12 leading-relaxed">
+            Join the CHARUSAT community today and take the first step towards transforming your career with our
+            comprehensive internship management platform
           </p>
 
           <Button
             onClick={handleSignIn}
             disabled={signingIn}
             size="lg"
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-12 py-6 text-xl font-semibold shadow-2xl hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105 rounded-2xl"
           >
-            Get Started Today
-            <ArrowRight className="ml-2 h-5 w-5" />
+            {signingIn ? (
+              <>
+                <Loader2 className="w-6 h-6 mr-3 animate-spin" />
+                Getting Started...
+              </>
+            ) : (
+              <>
+                Get Started Today
+                <ArrowRight className="ml-3 h-6 w-6" />
+              </>
+            )}
           </Button>
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
+      <footer className="bg-gray-900 text-white py-16 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-4 gap-12">
             <div className="col-span-2">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg">
-                  <GraduationCap className="h-6 w-6 text-white" />
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl">
+                  <GraduationCap className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">IMS</h3>
+                  <h3 className="text-2xl font-bold">IMS</h3>
                   <p className="text-sm text-gray-400">Internship Management System</p>
                 </div>
               </div>
-              <p className="text-gray-400 mb-4">
-                Empowering CHARUSAT students to achieve their career goals through seamless internship management.
+              <p className="text-gray-300 mb-6 leading-relaxed text-lg">
+                Empowering CHARUSAT students to achieve their career goals through seamless internship management and
+                industry connections.
               </p>
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4">Quick Links</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li>About CHARUSAT</li>
-                <li>Support</li>
-                <li>Privacy Policy</li>
-                <li>Terms of Service</li>
+              <h4 className="font-semibold mb-6 text-lg text-white">Quick Links</h4>
+              <ul className="space-y-3 text-gray-300">
+                <li className="hover:text-blue-400 transition-colors cursor-pointer">About CHARUSAT</li>
+                <li className="hover:text-blue-400 transition-colors cursor-pointer">Support Center</li>
+                <li className="hover:text-blue-400 transition-colors cursor-pointer">Privacy Policy</li>
+                <li className="hover:text-blue-400 transition-colors cursor-pointer">Terms of Service</li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4">Contact</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li>help@charusat.ac.in</li>
-                <li>+91 2697 265011</li>
-                <li>CHARUSAT Campus</li>
-                <li>Changa, Gujarat</li>
+              <h4 className="font-semibold mb-6 text-lg text-white">Contact Info</h4>
+              <ul className="space-y-3 text-gray-300">
+                <li className="hover:text-blue-400 transition-colors">help@charusat.ac.in</li>
+                <li className="hover:text-blue-400 transition-colors">+91 2697 265011</li>
+                <li>
+                  CHARUSAT Campus
+                  <br />
+                  Changa, Gujarat 388421
+                </li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 CHARUSAT University. All rights reserved.</p>
+          <div className="border-t border-gray-800 mt-12 pt-8 text-center">
+            <p className="text-gray-400 text-lg">
+              &copy; 2024 CHARUSAT University. All rights reserved. Built with ❤️ for students.
+            </p>
           </div>
         </div>
       </footer>
+
+      <style jsx>{`
+        @keyframes gradient {
+          0%, 100% {
+            background-size: 200% 200%;
+            background-position: left center;
+          }
+          50% {
+            background-size: 200% 200%;
+            background-position: right center;
+          }
+        }
+        .animate-gradient {
+          animation: gradient 3s ease infinite;
+        }
+      `}</style>
     </div>
   )
 }

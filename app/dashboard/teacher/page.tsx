@@ -1,119 +1,148 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Users, BookOpen, CheckCircle, Clock, MessageSquare, FileText } from "lucide-react"
+import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
+import { ModernTeacherSidebar } from "@/components/teacher/modern-teacher-sidebar"
+import { ModernTeacherTopBar } from "@/components/teacher/modern-teacher-topbar"
+import { TeacherOverview } from "@/components/teacher/teacher-overview"
+import { NOCManagement } from "@/components/teacher/noc-management"
+import { ApplicationManagement } from "@/components/teacher/application-management"
+import { TeacherSettings } from "@/components/teacher/teacher-settings"
+import { cn } from "@/lib/utils"
 
 export default function TeacherDashboard() {
-  return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Students Supervised</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">+3 new this semester</p>
-          </CardContent>
-        </Card>
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [activeSection, setActiveSection] = useState("overview")
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [userProfile, setUserProfile] = useState(null)
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Reviews</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">5</div>
-            <p className="text-xs text-muted-foreground">Reports awaiting review</p>
-          </CardContent>
-        </Card>
+  // Dev override email for testing
+  const DEV_OVERRIDE_EMAIL = "kirteekumarmukeshbhaipatel@gmail.com"
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed Internships</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">8</div>
-            <p className="text-xs text-muted-foreground">This academic year</p>
-          </CardContent>
-        </Card>
+  useEffect(() => {
+    if (status === "loading") return
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">4.8</div>
-            <p className="text-xs text-muted-foreground">Student feedback score</p>
-          </CardContent>
-        </Card>
+    if (!session) {
+      router.push("/auth/error")
+      return
+    }
+
+    // Check if user has teacher role or is dev override
+    const checkAccess = async () => {
+      try {
+        const { data: profile, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("email", session.user?.email)
+          .single()
+
+        if (error || !profile) {
+          console.error("Profile not found:", error)
+          router.push("/auth/error?error=unauthorized")
+          return
+        }
+
+        // Allow access for teachers or dev override email
+        if (profile.role !== "teacher" && session.user?.email !== DEV_OVERRIDE_EMAIL) {
+          router.push("/auth/error?error=unauthorized")
+          return
+        }
+
+        setUserProfile(profile)
+        setLoading(false)
+      } catch (error) {
+        console.error("Access check failed:", error)
+        router.push("/auth/error?error=unauthorized")
+      }
+    }
+
+    checkAccess()
+  }, [session, status, router])
+
+  // Handle responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(true)
+      }
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed)
+  }
+
+  const renderContent = () => {
+    switch (activeSection) {
+      case "overview":
+        return <TeacherOverview />
+      case "all-nocs":
+      case "pending-nocs":
+      case "approved-nocs":
+      case "rejected-nocs":
+        return <NOCManagement activeView={activeSection} />
+      case "all-applications":
+      case "pending-applications":
+      case "approved-applications":
+      case "rejected-applications":
+        return <ApplicationManagement activeView={activeSection} />
+      case "settings":
+        return <TeacherSettings userProfile={userProfile} />
+      default:
+        return <TeacherOverview />
+    }
+  }
+
+  if (loading || status === "loading") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 flex items-center justify-center">
+        <div className="text-center space-y-6">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-emerald-200 border-t-emerald-600 mx-auto"></div>
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-600 to-blue-600 opacity-20 animate-pulse"></div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xl font-semibold text-gray-800">Loading Teacher Dashboard</p>
+            <p className="text-gray-600">Preparing your management portal...</p>
+          </div>
+        </div>
       </div>
+    )
+  }
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Students Under Supervision</CardTitle>
-            <CardDescription>Monitor your students' internship progress</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Rahul Patel</p>
-                <p className="text-sm text-gray-500">Software Development @ TechCorp</p>
-              </div>
-              <Badge variant="default">Active</Badge>
-            </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50/30 via-white to-blue-50/30">
+      {/* Sidebar */}
+      <ModernTeacherSidebar
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+        userProfile={userProfile}
+      />
 
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Priya Shah</p>
-                <p className="text-sm text-gray-500">Data Analysis @ DataFlow Inc</p>
-              </div>
-              <Badge variant="outline">Report Due</Badge>
-            </div>
+      {/* Main Content */}
+      <div className={cn("transition-all duration-300 ease-in-out", sidebarCollapsed ? "lg:ml-16" : "lg:ml-80")}>
+        {/* Top Bar */}
+        <ModernTeacherTopBar
+          activeSection={activeSection}
+          onToggleSidebar={toggleSidebar}
+          sidebarCollapsed={sidebarCollapsed}
+          userProfile={userProfile}
+        />
 
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Arjun Mehta</p>
-                <p className="text-sm text-gray-500">UI/UX Design @ Creative Studios</p>
-              </div>
-              <Badge variant="secondary">Completed</Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Manage your supervision duties</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <FileText className="mr-2 h-4 w-4" />
-              Review Pending Reports
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Message Students
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <BookOpen className="mr-2 h-4 w-4" />
-              Schedule Meetings
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Grade Internships
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Content Area */}
+        <main className="p-6 lg:p-8 min-h-[calc(100vh-80px)]">
+          <div className="max-w-7xl mx-auto">{renderContent()}</div>
+        </main>
       </div>
     </div>
   )

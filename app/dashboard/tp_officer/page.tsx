@@ -1,133 +1,167 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Building2, Users, TrendingUp, Calendar, Plus, FileText, Phone, Mail } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { redirect } from "next/navigation"
+import { ModernTpSidebar } from "@/components/tp-officer/modern-tp-sidebar"
+import { ModernTpTopbar } from "@/components/tp-officer/modern-tp-topbar"
+import { TPOfficerOverview } from "@/components/tp-officer/tp-officer-overview"
+import { NOCManagement } from "@/components/tp-officer/noc-management"
+import { CompanyVerification } from "@/components/tp-officer/company-verification"
+import { InternshipOpportunities } from "@/components/tp-officer/internship-opportunities"
+import { ApplicationReview } from "@/components/tp-officer/application-review"
+import { TPOfficerSettings } from "@/components/tp-officer/tp-officer-settings"
+import { getCurrentUser } from "@/lib/supabase-consistent"
+import { cn } from "@/lib/utils"
+
+type ActiveSection =
+  | "overview"
+  | "noc-management"
+  | "company-verification"
+  | "internship-opportunities"
+  | "application-review"
+  | "settings"
 
 export default function TPOfficerDashboard() {
-  return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Companies</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">45</div>
-            <p className="text-xs text-muted-foreground">+5 new partnerships</p>
-          </CardContent>
-        </Card>
+  const { data: session, status } = useSession()
+  const [activeSection, setActiveSection] = useState<ActiveSection>("overview")
+  const [userData, setUserData] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">320</div>
-            <p className="text-xs text-muted-foreground">Across all departments</p>
-          </CardContent>
-        </Card>
+  // Dev override email for testing
+  const DEV_OVERRIDE_EMAIL = "kirteekumarmukeshbhaipatel@gmail.com"
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Placement Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">87%</div>
-            <p className="text-xs text-muted-foreground">+12% from last year</p>
-          </CardContent>
-        </Card>
+  useEffect(() => {
+    async function checkAccess() {
+      if (status === "loading") return
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming Events</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">This week</p>
-          </CardContent>
-        </Card>
+      if (!session?.user) {
+        redirect("/auth/signin")
+        return
+      }
+
+      try {
+        // Check if user has tp_officer role or is dev override
+        const user = await getCurrentUser()
+
+        if (!user) {
+          redirect("/auth/error?error=unauthorized")
+          return
+        }
+
+        const hasAccess = user.role === "tp_officer" || session.user.email === DEV_OVERRIDE_EMAIL
+
+        if (!hasAccess) {
+          redirect("/auth/error?error=unauthorized")
+          return
+        }
+
+        setUserData(user)
+      } catch (error) {
+        console.error("Error checking access:", error)
+        redirect("/auth/error?error=unauthorized")
+        return
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAccess()
+  }, [session, status])
+
+  // Handle responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsCollapsed(true)
+      }
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center space-y-6">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-blue-200 border-t-blue-600 mx-auto"></div>
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 opacity-20 animate-pulse"></div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xl font-semibold text-gray-800">Loading T&P Dashboard</p>
+            <p className="text-gray-600">Preparing your management portal...</p>
+          </div>
+        </div>
       </div>
+    )
+  }
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Company Partnerships</CardTitle>
-            <CardDescription>Manage company relationships and internship opportunities</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center space-x-4">
-                <Building2 className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="font-medium">TechCorp Solutions</p>
-                  <p className="text-sm text-gray-500">15 internship positions</p>
-                </div>
-              </div>
-              <Badge variant="default">Active</Badge>
-            </div>
+  const renderActiveSection = () => {
+    switch (activeSection) {
+      case "overview":
+        return <TPOfficerOverview />
+      case "noc-management":
+        return <NOCManagement />
+      case "company-verification":
+        return <CompanyVerification />
+      case "internship-opportunities":
+        return <InternshipOpportunities />
+      case "application-review":
+        return <ApplicationReview />
+      case "settings":
+        return <TPOfficerSettings />
+      default:
+        return <TPOfficerOverview />
+    }
+  }
 
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center space-x-4">
-                <Building2 className="h-8 w-8 text-green-600" />
-                <div>
-                  <p className="font-medium">DataFlow Inc</p>
-                  <p className="text-sm text-gray-500">8 internship positions</p>
-                </div>
-              </div>
-              <Badge variant="outline">New Partnership</Badge>
-            </div>
+  const getSectionTitle = () => {
+    switch (activeSection) {
+      case "overview":
+        return "Dashboard Overview"
+      case "noc-management":
+        return "NOC Management"
+      case "company-verification":
+        return "Company Verification"
+      case "internship-opportunities":
+        return "Internship Opportunities"
+      case "application-review":
+        return "Application Review"
+      case "settings":
+        return "Settings"
+      default:
+        return "Dashboard"
+    }
+  }
 
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center space-x-4">
-                <Building2 className="h-8 w-8 text-purple-600" />
-                <div>
-                  <p className="font-medium">Creative Studios</p>
-                  <p className="text-sm text-gray-500">5 internship positions</p>
-                </div>
-              </div>
-              <Badge variant="secondary">Pending Review</Badge>
-            </div>
-          </CardContent>
-        </Card>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/30">
+      {/* Sidebar */}
+      <ModernTpSidebar
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+      />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Management Tools</CardTitle>
-            <CardDescription>Streamline your T&P operations</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <Plus className="mr-2 h-4 w-4" />
-              Add New Company
-            </Button>
+      {/* Main Content */}
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:ml-16" : "lg:ml-80")}>
+        {/* Top Bar */}
+        <ModernTpTopbar
+          title={getSectionTitle()}
+          userData={userData}
+          isCollapsed={isCollapsed}
+          setIsCollapsed={setIsCollapsed}
+        />
 
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <FileText className="mr-2 h-4 w-4" />
-              Generate Reports
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <Calendar className="mr-2 h-4 w-4" />
-              Schedule Campus Drives
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <Mail className="mr-2 h-4 w-4" />
-              Send Bulk Notifications
-            </Button>
-
-            <Button className="w-full justify-start bg-transparent" variant="outline">
-              <Phone className="mr-2 h-4 w-4" />
-              Contact Companies
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Content Area */}
+        <main className="p-6 lg:p-8 min-h-[calc(100vh-80px)]">
+          <div className="max-w-7xl mx-auto">{renderActiveSection()}</div>
+        </main>
       </div>
     </div>
   )
