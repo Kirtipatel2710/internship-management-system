@@ -1,66 +1,53 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { supabase } from "@/lib/supabaseClient"
-import { EnhancedFileUpload } from "@/components/enhanced-file-upload"
-import { toast } from "@/components/ui/use-toast"
-import { Plus, Edit, Trash2, Award, Calendar, MessageSquare, Eye, Building2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { supabase, uploadFile, type Certificate } from "@/lib/supabase"
+import { Award, Plus, Download, CheckCircle, Clock, XCircle, Upload } from "lucide-react"
+import { toast } from "sonner"
 
-interface Certificate {
-  id: string
-  student_id: string
-  internship_title: string
-  company_name: string
-  start_date: string
-  end_date: string
-  file_url: string
-  status: "pending" | "approved" | "rejected"
-  notes: string | null
-  submitted_at: string
-  approved_by: string | null
-  approved_at: string | null
-}
-
-interface CertificateFormData {
-  internship_title: string
-  company_name: string
-  start_date: string
-  end_date: string
-  file_url: string
-  notes: string
+const statusConfig = {
+  pending_review: {
+    label: "Pending Review",
+    color: "bg-yellow-100 text-yellow-800",
+    icon: Clock,
+  },
+  approved: {
+    label: "Approved",
+    color: "bg-green-100 text-green-800",
+    icon: CheckCircle,
+  },
+  rejected: {
+    label: "Rejected",
+    color: "bg-red-100 text-red-800",
+    icon: XCircle,
+  },
 }
 
 export function Certificates() {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [editingCertificate, setEditingCertificate] = useState<Certificate | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [formData, setFormData] = useState<CertificateFormData>({
+  const [uploading, setUploading] = useState(false)
+  const [formData, setFormData] = useState({
     internship_title: "",
     company_name: "",
-    start_date: "",
-    end_date: "",
-    file_url: "",
     notes: "",
   })
+  const [certificateFile, setCertificateFile] = useState<File | null>(null)
 
   useEffect(() => {
     fetchCertificates()
@@ -71,6 +58,7 @@ export function Certificates() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
+
       if (!user) return
 
       const { data, error } = await supabase
@@ -84,176 +72,132 @@ export function Certificates() {
       setCertificates(data || [])
     } catch (error) {
       console.error("Error fetching certificates:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch certificates",
-        variant: "destructive",
-      })
+      toast.error("Failed to load certificates")
     } finally {
       setLoading(false)
     }
   }
 
+  const validateForm = () => {
+    if (!formData.internship_title || !formData.company_name) {
+      toast.warning("Missing Required Fields", {
+        description: "Please fill in internship title and company name",
+      })
+      return false
+    }
+
+    if (!certificateFile) {
+      toast.warning("File Required", {
+        description: "Please upload your completion certificate",
+      })
+      return false
+    }
+
+    return true
+  }
+
+  const handleFileUpload = async (file: File) => {
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"]
+    const maxSize = 10 * 1024 * 1024 // 10MB
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Invalid File Type", {
+        description: "Please upload PDF, JPG, or PNG files only",
+      })
+      return null
+    }
+
+    if (file.size > maxSize) {
+      toast.error("File Too Large", {
+        description: "File size must be less than 10MB",
+      })
+      return null
+    }
+
+    setUploading(true)
+    const fileName = `certificate-${Date.now()}-${file.name}`
+    const { url, error } = await uploadFile(file, "completion-certificates", fileName)
+    setUploading(false)
+
+    if (error) {
+      toast.error("Upload Failed", {
+        description: "Failed to upload certificate",
+      })
+      return null
+    }
+
+    return url
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (
-      !formData.internship_title ||
-      !formData.company_name ||
-      !formData.start_date ||
-      !formData.end_date ||
-      !formData.file_url
-    ) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields and upload a certificate",
-        variant: "destructive",
-      })
-      return
-    }
+
+    if (!validateForm()) return
 
     setSubmitting(true)
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) throw new Error("User not authenticated")
 
-      if (editingCertificate) {
-        // Update existing certificate
-        const { error } = await supabase
-          .from("certificates")
-          .update({
-            internship_title: formData.internship_title,
-            company_name: formData.company_name,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            file_url: formData.file_url,
-            notes: formData.notes || null,
-          })
-          .eq("id", editingCertificate.id)
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Certificate updated successfully",
+      if (!user) {
+        toast.error("Authentication Required", {
+          description: "Please sign in to submit certificate",
         })
-      } else {
-        // Create new certificate
-        const { error } = await supabase.from("certificates").insert({
-          student_id: user.id,
-          internship_title: formData.internship_title,
-          company_name: formData.company_name,
-          start_date: formData.start_date,
-          end_date: formData.end_date,
-          file_url: formData.file_url,
-          notes: formData.notes || null,
-        })
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Certificate submitted successfully",
-        })
+        return
       }
 
-      resetForm()
-      setIsDialogOpen(false)
+      const fileUrl = await handleFileUpload(certificateFile!)
+      if (!fileUrl) return // Upload failed
+
+      const { error } = await supabase.from("certificates").insert({
+        student_id: user.id,
+        internship_title: formData.internship_title,
+        company_name: formData.company_name,
+        file_url: fileUrl,
+        notes: formData.notes,
+        status: "pending_review",
+        submitted_at: new Date().toISOString(),
+      })
+
+      if (error) throw error
+
+      toast.success("Certificate Submitted!", {
+        description: "Your certificate has been submitted for review",
+      })
+
+      // Reset form
+      setFormData({
+        internship_title: "",
+        company_name: "",
+        notes: "",
+      })
+      setCertificateFile(null)
       fetchCertificates()
     } catch (error) {
       console.error("Error submitting certificate:", error)
-      toast({
-        title: "Error",
+      toast.error("Submission Failed", {
         description: "Failed to submit certificate",
-        variant: "destructive",
       })
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleEdit = (certificate: Certificate) => {
-    setEditingCertificate(certificate)
-    setFormData({
-      internship_title: certificate.internship_title,
-      company_name: certificate.company_name,
-      start_date: certificate.start_date,
-      end_date: certificate.end_date,
-      file_url: certificate.file_url,
-      notes: certificate.notes || "",
-    })
-    setIsDialogOpen(true)
-  }
-
-  const handleDelete = async (certificateId: string) => {
-    if (!confirm("Are you sure you want to delete this certificate?")) return
-
-    try {
-      const { error } = await supabase.from("certificates").delete().eq("id", certificateId)
-
-      if (error) throw error
-
-      toast({
-        title: "Success",
-        description: "Certificate deleted successfully",
-      })
-      fetchCertificates()
-    } catch (error) {
-      console.error("Error deleting certificate:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete certificate",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      internship_title: "",
-      company_name: "",
-      start_date: "",
-      end_date: "",
-      file_url: "",
-      notes: "",
-    })
-    setEditingCertificate(null)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-green-100 text-green-800">Approved</Badge>
-      case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>
-      default:
-        return <Badge variant="secondary">Pending</Badge>
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">Internship Certificates</h2>
-        </div>
-        <div className="grid gap-6">
-          {[...Array(2)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-20 bg-gray-200 rounded"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="h-3 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded w-5/6"></div>
                 </div>
               </CardContent>
             </Card>
@@ -265,213 +209,205 @@ export function Certificates() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Internship Certificates</h2>
+          <h1 className="text-3xl font-bold text-gray-900">Certificates</h1>
           <p className="text-gray-600">Upload and manage your internship completion certificates</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+        <Dialog>
           <DialogTrigger asChild>
-            <Button onClick={resetForm} className="bg-blue-600 hover:bg-blue-700">
+            <Button>
               <Plus className="h-4 w-4 mr-2" />
               Upload Certificate
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[700px]">
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{editingCertificate ? "Edit Certificate" : "Upload Internship Certificate"}</DialogTitle>
-              <DialogDescription>Submit your internship completion certificate for approval</DialogDescription>
+              <DialogTitle>Upload Completion Certificate</DialogTitle>
+              <DialogDescription>Submit your internship completion certificate for verification</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                   <Label htmlFor="internship_title">Internship Title *</Label>
                   <Input
                     id="internship_title"
                     value={formData.internship_title}
                     onChange={(e) => setFormData({ ...formData, internship_title: e.target.value })}
-                    placeholder="Enter internship position title"
+                    placeholder="e.g., Software Development Intern"
                     required
                   />
                 </div>
-
-                <div className="space-y-2">
+                <div>
                   <Label htmlFor="company_name">Company Name *</Label>
                   <Input
                     id="company_name"
                     value={formData.company_name}
                     onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                    placeholder="Enter company name"
+                    placeholder="e.g., Tech Solutions Inc."
                     required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date *</Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={formData.start_date}
-                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="end_date">End Date *</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={formData.end_date}
-                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <EnhancedFileUpload
-                  bucket="certificates"
-                  path="completion_certificates"
-                  onUploadComplete={(url) => setFormData({ ...formData, file_url: url })}
-                  currentFile={formData.file_url}
-                  label="Certificate File (PDF)"
-                  required
-                  accept=".pdf"
-                  maxSize={10}
-                />
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Additional Notes (Optional)</Label>
-                  <Textarea
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Any additional information about your internship"
-                    rows={3}
                   />
                 </div>
               </div>
 
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+              <div>
+                <Label htmlFor="certificate_file">Certificate File * (PDF, JPG, PNG - Max 10MB)</Label>
+                <Input
+                  id="certificate_file"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+                  className="mt-1"
+                  required
+                />
+                {certificateFile && <p className="text-sm text-green-600 mt-1">Selected: {certificateFile.name}</p>}
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Additional Notes (Optional)</Label>
+                <Input
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Any additional information about the certificate..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogTrigger>
+                <Button type="submit" disabled={submitting || uploading}>
+                  {submitting || uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      {uploading ? "Uploading..." : "Submitting..."}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Certificate
+                    </>
+                  )}
                 </Button>
-                <Button type="submit" disabled={submitting || !formData.file_url}>
-                  {submitting ? "Uploading..." : editingCertificate ? "Update Certificate" : "Upload Certificate"}
-                </Button>
-              </DialogFooter>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      {certificates.length === 0 ? (
+      {/* Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
-          <CardContent className="p-12 text-center">
-            <Award className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No certificates uploaded yet</h3>
-            <p className="text-gray-600 mb-4">Upload your internship completion certificate to get started</p>
-            <Button onClick={() => setIsDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Upload Certificate
-            </Button>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Certificates</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{certificates.length}</div>
+            <p className="text-xs text-muted-foreground">Uploaded certificates</p>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid gap-6">
-          {certificates.map((certificate) => (
-            <Card key={certificate.id} className="hover:shadow-md transition-shadow">
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Approved</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "approved").length}</div>
+            <p className="text-xs text-muted-foreground">Verified certificates</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "pending_review").length}</div>
+            <p className="text-xs text-muted-foreground">Awaiting verification</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Certificates List */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {certificates.map((certificate) => {
+          const statusInfo = statusConfig[certificate.status as keyof typeof statusConfig]
+          const StatusIcon = statusInfo.icon
+
+          return (
+            <Card key={certificate.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div className="space-y-2">
-                    <CardTitle className="flex items-center gap-2">
-                      <Award className="h-5 w-5 text-orange-600" />
-                      {certificate.internship_title}
-                    </CardTitle>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Building2 className="h-4 w-4" />
-                      <span className="font-medium">{certificate.company_name}</span>
-                    </div>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{certificate.internship_title}</CardTitle>
+                    <CardDescription className="mt-1">{certificate.company_name}</CardDescription>
                   </div>
-                  <div className="flex flex-wrap gap-2">{getStatusBadge(certificate.status)}</div>
+                  <Badge className={statusInfo.color}>
+                    <div className="flex items-center">
+                      <StatusIcon className="h-4 w-4 mr-1" />
+                      <span className="text-xs">{statusInfo.label}</span>
+                    </div>
+                  </Badge>
                 </div>
               </CardHeader>
-
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-500" />
-                    <span>
-                      Duration: {formatDate(certificate.start_date)} - {formatDate(certificate.end_date)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-500" />
-                    <span>Submitted: {formatDate(certificate.submitted_at)}</span>
-                  </div>
-                </div>
-
+              <CardContent className="space-y-3">
                 {certificate.notes && (
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <MessageSquare className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-800">Your Notes:</p>
-                        <p className="text-sm text-blue-700 mt-1">{certificate.notes}</p>
-                      </div>
-                    </div>
+                  <div>
+                    <h4 className="font-medium text-sm mb-1">Notes:</h4>
+                    <p className="text-sm text-gray-600">{certificate.notes}</p>
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                  <Award className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium">Certificate file attached</span>
-                  <Button variant="ghost" size="sm" asChild className="ml-auto">
-                    <a href={certificate.file_url} target="_blank" rel="noopener noreferrer">
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </a>
-                  </Button>
-                </div>
-
-                {certificate.approved_at && (
-                  <div className="p-4 bg-green-50 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <Calendar className="h-4 w-4 text-green-600 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-green-800">
-                          Approved on {formatDate(certificate.approved_at)}
-                        </p>
-                        <p className="text-sm text-green-700">Your certificate has been verified and approved</p>
-                      </div>
-                    </div>
+                {certificate.rejection_reason && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <h4 className="font-medium text-sm text-red-900 mb-1">Rejection Reason:</h4>
+                    <p className="text-sm text-red-800">{certificate.rejection_reason}</p>
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row gap-2 pt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(certificate)}
-                    disabled={certificate.status === "approved"}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDelete(certificate.id)}
-                    disabled={certificate.status === "approved"}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
+                <div className="flex justify-between items-center">
+                  <div className="text-xs text-gray-400">
+                    Submitted: {new Date(certificate.submitted_at).toLocaleDateString()}
+                    {certificate.approved_at && (
+                      <span className="block">Approved: {new Date(certificate.approved_at).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => window.open(certificate.file_url, "_blank")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    View
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          )
+        })}
+      </div>
+
+      {certificates.length === 0 && !loading && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <Award className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No certificates yet</h3>
+            <p className="text-gray-500 mb-4">Upload your internship completion certificates for verification.</p>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Upload First Certificate
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

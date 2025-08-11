@@ -23,6 +23,7 @@ import { useState } from "react"
 interface StudentSidebarProps {
   activeTab: string
   onTabChange: (tab: string) => void
+  userProfile?: any
   className?: string
 }
 
@@ -100,7 +101,7 @@ const sidebarItems = [
   },
 ]
 
-function SidebarContent({ activeTab, onTabChange, className }: StudentSidebarProps) {
+function SidebarContent({ activeTab, onTabChange, userProfile, className }: StudentSidebarProps) {
   return (
     <div className={cn("h-full flex flex-col bg-transparent", className)}>
       {/* Modern Header */}
@@ -224,8 +225,10 @@ function SidebarContent({ activeTab, onTabChange, className }: StudentSidebarPro
             <User className="h-4 w-4 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">John Doe</p>
-            <p className="text-xs text-gray-500">Student ID: 21CE001</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{userProfile?.name || "Student"}</p>
+            <p className="text-xs text-gray-500">
+              {userProfile?.enrollment_no || "ID: " + userProfile?.id?.slice(0, 8)}
+            </p>
           </div>
         </div>
       </div>
@@ -233,14 +236,14 @@ function SidebarContent({ activeTab, onTabChange, className }: StudentSidebarPro
   )
 }
 
-export function StudentSidebar({ activeTab, onTabChange }: Omit<StudentSidebarProps, "className">) {
+export function StudentSidebar({ activeTab, onTabChange, userProfile }: Omit<StudentSidebarProps, "className">) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
     <>
       {/* Desktop Sidebar */}
       <div className="hidden lg:block h-full">
-        <SidebarContent activeTab={activeTab} onTabChange={onTabChange} />
+        <SidebarContent activeTab={activeTab} onTabChange={onTabChange} userProfile={userProfile} />
       </div>
 
       {/* Mobile Sidebar */}
@@ -262,6 +265,7 @@ export function StudentSidebar({ activeTab, onTabChange }: Omit<StudentSidebarPr
               onTabChange(tab)
               setIsOpen(false)
             }}
+            userProfile={userProfile}
           />
         </SheetContent>
       </Sheet>

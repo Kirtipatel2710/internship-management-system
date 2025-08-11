@@ -1,59 +1,91 @@
 "use client"
 
-// import type React from "react"
-import { useEffect, useState } from "react"
+import type React from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { supabase } from "@/lib/supabaseClient"
-import { EnhancedFileUpload } from "@/components/enhanced-file-upload"
-import { toast } from "@/components/ui/use-toast"
-import { Plus, Edit, Trash2, FileText, Calendar, Building2, Eye, Clock, CheckCircle, XCircle } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { supabase, uploadFile } from "@/lib/supabase"
+import {
+  FileText,
+  Plus,
+  Calendar,
+  Building2,
+  MapPin,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Download,
+  Trash2,
+} from "lucide-react"
+import { toast } from "sonner"
 
-interface NOCRequest {
-  id: string
-  company_name: string
-  position: string
-  start_date: string
-  end_date: string
-  status: "pending" | "approved" | "rejected"
-  file_url: string | null
-  requested_at: string
-  approved_at: string | null
+const statusConfig = {
+  pending_teacher: {
+    label: "Pending Teacher Approval",
+    color: "bg-yellow-100 text-yellow-800",
+    icon: AlertCircle,
+  },
+  approved_teacher: {
+    label: "Teacher Approved",
+    color: "bg-blue-100 text-blue-800",
+    icon: CheckCircle,
+  },
+  rejected_teacher: {
+    label: "Teacher Rejected",
+    color: "bg-red-100 text-red-800",
+    icon: XCircle,
+  },
+  pending_tpo: {
+    label: "Pending T&P Officer Approval",
+    color: "bg-orange-100 text-orange-800",
+    icon: AlertCircle,
+  },
+  approved: {
+    label: "Approved",
+    color: "bg-green-100 text-green-800",
+    icon: CheckCircle,
+  },
+  rejected: {
+    label: "Rejected",
+    color: "bg-red-100 text-red-800",
+    icon: XCircle,
+  },
 }
 
-interface NOCFormData {
-  company_name: string
-  position: string
-  start_date: string
-  end_date: string
-  file_url: string
-}
-
-export function NOCRequest() {
-  const [requests, setRequests] = useState<NOCRequest[]>([])
+export function NOCRequestComponent() {
+  const [nocRequests, setNocRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [editingRequest, setEditingRequest] = useState<NOCRequest | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [formData, setFormData] = useState<NOCFormData>({
+  const [uploading, setUploading] = useState(false)
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [formData, setFormData] = useState({
     company_name: "",
-    position: "",
+    company_address: "",
+    company_contact_email: "",
+    company_contact_phone: "",
+    internship_role: "",
+    internship_duration: "",
+    internship_location: "",
     start_date: "",
     end_date: "",
-    file_url: "",
+    stipend: "",
+    description: "",
   })
+  const [offerLetterFile, setOfferLetterFile] = useState<File | null>(null)
 
   useEffect(() => {
     fetchNOCRequests()
@@ -64,198 +96,190 @@ export function NOCRequest() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
+
       if (!user) return
 
       const { data, error } = await supabase
         .from("noc_requests")
         .select("*")
         .eq("student_id", user.id)
-        .order("requested_at", { ascending: false })
+        .order("created_at", { ascending: false })
 
       if (error) throw error
 
-      setRequests(data || [])
+      setNocRequests(data || [])
     } catch (error) {
       console.error("Error fetching NOC requests:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch NOC requests",
-        variant: "destructive",
-      })
+      toast.error("Failed to load NOC requests")
     } finally {
       setLoading(false)
     }
   }
 
+  const validateForm = () => {
+    const requiredFields = ["company_name", "internship_role", "internship_duration", "start_date", "end_date"]
+    const missingFields = requiredFields.filter((field) => !formData[field as keyof typeof formData])
+
+    if (missingFields.length > 0) {
+      toast.warning("Missing Required Fields", {
+        description: `Please fill in: ${missingFields.join(", ")}`,
+      })
+      return false
+    }
+
+    if (formData.company_contact_email && !/\S+@\S+\.\S+/.test(formData.company_contact_email)) {
+      toast.warning("Invalid Email", {
+        description: "Please enter a valid email address",
+      })
+      return false
+    }
+
+    if (new Date(formData.start_date) >= new Date(formData.end_date)) {
+      toast.warning("Invalid Date Range", {
+        description: "End date must be after start date",
+      })
+      return false
+    }
+
+    return true
+  }
+
+  const handleFileUpload = async (file: File) => {
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    const maxSize = 10 * 1024 * 1024 // 10MB
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Invalid File Type", {
+        description: "Please upload PDF, DOC, or DOCX files only",
+      })
+      return null
+    }
+
+    if (file.size > maxSize) {
+      toast.error("File Too Large", {
+        description: "File size must be less than 10MB",
+      })
+      return null
+    }
+
+    setUploading(true)
+    const fileName = `${Date.now()}-${file.name}`
+    const { url, error } = await uploadFile(file, "noc-documents", fileName)
+    setUploading(false)
+
+    if (error) {
+      toast.error("Upload Failed", {
+        description: "Failed to upload offer letter",
+      })
+      return null
+    }
+
+    return url
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.company_name || !formData.position || !formData.start_date || !formData.end_date) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      })
-      return
-    }
+
+    if (!validateForm()) return
 
     setSubmitting(true)
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) throw new Error("User not authenticated")
 
-      if (editingRequest) {
-        const { error } = await supabase
-          .from("noc_requests")
-          .update({
-            company_name: formData.company_name,
-            position: formData.position,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            file_url: formData.file_url || null,
-          })
-          .eq("id", editingRequest.id)
-
-        if (error) throw error
-
-        toast({
-          title: "Success! 🎉",
-          description: "NOC request updated successfully",
+      if (!user) {
+        toast.error("Authentication Required", {
+          description: "Please sign in to submit NOC request",
         })
-      } else {
-        const { error } = await supabase.from("noc_requests").insert({
-          student_id: user.id,
-          company_name: formData.company_name,
-          position: formData.position,
-          start_date: formData.start_date,
-          end_date: formData.end_date,
-          file_url: formData.file_url || null,
-        })
-
-        if (error) throw error
-
-        toast({
-          title: "Success! 🎉",
-          description: "NOC request submitted successfully",
-        })
+        return
       }
 
-      resetForm()
-      setIsDialogOpen(false)
+      let offerLetterUrl = null
+      if (offerLetterFile) {
+        offerLetterUrl = await handleFileUpload(offerLetterFile)
+        if (!offerLetterUrl) return // Upload failed
+      }
+
+      const { error } = await supabase.from("noc_requests").insert({
+        student_id: user.id,
+        ...formData,
+        offer_letter_url: offerLetterUrl,
+        status: "pending_teacher",
+        priority: "medium",
+      })
+
+      if (error) throw error
+
+      toast.success("NOC Request Submitted!", {
+        description: "Your request has been submitted for teacher approval",
+      })
+
+      // Reset form
+      setFormData({
+        company_name: "",
+        company_address: "",
+        company_contact_email: "",
+        company_contact_phone: "",
+        internship_role: "",
+        internship_duration: "",
+        internship_location: "",
+        start_date: "",
+        end_date: "",
+        stipend: "",
+        description: "",
+      })
+      setOfferLetterFile(null)
       fetchNOCRequests()
     } catch (error) {
       console.error("Error submitting NOC request:", error)
-      toast({
-        title: "Error",
+      toast.error("Submission Failed", {
         description: "Failed to submit NOC request",
-        variant: "destructive",
       })
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleEdit = (request: NOCRequest) => {
-    setEditingRequest(request)
-    setFormData({
-      company_name: request.company_name,
-      position: request.position,
-      start_date: request.start_date,
-      end_date: request.end_date,
-      file_url: request.file_url || "",
-    })
-    setIsDialogOpen(true)
-  }
-
   const handleDelete = async (requestId: string) => {
-    if (!confirm("Are you sure you want to delete this NOC request?")) return
-
     try {
       const { error } = await supabase.from("noc_requests").delete().eq("id", requestId)
 
       if (error) throw error
 
-      toast({
-        title: "Success",
-        description: "NOC request deleted successfully",
+      toast.success("Request Deleted", {
+        description: "NOC request has been deleted successfully",
       })
       fetchNOCRequests()
     } catch (error) {
-      console.error("Error deleting NOC request:", error)
-      toast({
-        title: "Error",
+      console.error("Error deleting request:", error)
+      toast.error("Delete Failed", {
         description: "Failed to delete NOC request",
-        variant: "destructive",
       })
     }
   }
 
-  const resetForm = () => {
-    setFormData({
-      company_name: "",
-      position: "",
-      start_date: "",
-      end_date: "",
-      file_url: "",
-    })
-    setEditingRequest(null)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
-          </Badge>
-        )
-      case "rejected":
-        return (
-          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
-            <XCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
-        )
-      default:
-        return (
-          <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        )
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
-  const getFileUrl = (filePath: string) => {
-    if (!filePath) return ""
-    if (filePath.startsWith("http")) return filePath
-    return supabase.storage.from("noc-documents").getPublicUrl(filePath).data.publicUrl
-  }
+  const filteredRequests =
+    statusFilter === "all" ? nocRequests : nocRequests.filter((req) => req.status === statusFilter)
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">NOC Requests</h2>
-        </div>
-        <div className="grid gap-6">
-          {[...Array(2)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-20 bg-gray-200 rounded"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="h-3 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded w-5/6"></div>
                 </div>
               </CardContent>
             </Card>
@@ -266,175 +290,333 @@ export function NOCRequest() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">NOC Requests</h2>
-          <p className="text-gray-600 mt-2">Manage your No Objection Certificate requests</p>
+          <h1 className="text-3xl font-bold text-gray-900">NOC Requests</h1>
+          <p className="text-gray-600">Manage your No Objection Certificate requests</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+        <Dialog>
           <DialogTrigger asChild>
-            <Button
-              onClick={resetForm}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg"
-            >
+            <Button>
               <Plus className="h-4 w-4 mr-2" />
               New NOC Request
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">
-                {editingRequest ? "Edit NOC Request" : "New NOC Request"}
-              </DialogTitle>
-              <DialogDescription>Submit a request for No Objection Certificate for your internship</DialogDescription>
+              <DialogTitle>Submit NOC Request</DialogTitle>
+              <DialogDescription>Fill in the details for your internship NOC request</DialogDescription>
             </DialogHeader>
+
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="company_name">Company Name *</Label>
-                  <Input
-                    id="company_name"
-                    value={formData.company_name}
-                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                    required
+              {/* Company Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Company Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="company_name">Company Name *</Label>
+                    <Input
+                      id="company_name"
+                      value={formData.company_name}
+                      onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="internship_role">Internship Role *</Label>
+                    <Input
+                      id="internship_role"
+                      value={formData.internship_role}
+                      onChange={(e) => setFormData({ ...formData, internship_role: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="company_address">Company Address</Label>
+                  <Textarea
+                    id="company_address"
+                    value={formData.company_address}
+                    onChange={(e) => setFormData({ ...formData, company_address: e.target.value })}
+                    rows={2}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="position">Position *</Label>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="company_contact_email">Company Contact Email</Label>
+                    <Input
+                      id="company_contact_email"
+                      type="email"
+                      value={formData.company_contact_email}
+                      onChange={(e) => setFormData({ ...formData, company_contact_email: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="company_contact_phone">Company Contact Phone</Label>
+                    <Input
+                      id="company_contact_phone"
+                      value={formData.company_contact_phone}
+                      onChange={(e) => setFormData({ ...formData, company_contact_phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Internship Details */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Internship Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="internship_duration">Duration *</Label>
+                    <Input
+                      id="internship_duration"
+                      placeholder="e.g., 3 months"
+                      value={formData.internship_duration}
+                      onChange={(e) => setFormData({ ...formData, internship_duration: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="internship_location">Location</Label>
+                    <Input
+                      id="internship_location"
+                      value={formData.internship_location}
+                      onChange={(e) => setFormData({ ...formData, internship_location: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="start_date">Start Date *</Label>
+                    <Input
+                      id="start_date"
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="end_date">End Date *</Label>
+                    <Input
+                      id="end_date"
+                      type="date"
+                      value={formData.end_date}
+                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="stipend">Stipend</Label>
                   <Input
-                    id="position"
-                    value={formData.position}
-                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                    required
+                    id="stipend"
+                    placeholder="e.g., ₹15,000/month"
+                    value={formData.stipend}
+                    onChange={(e) => setFormData({ ...formData, stipend: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Additional details about the internship..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="start_date">Start Date *</Label>
+
+              {/* File Upload */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Documents</h3>
+                <div>
+                  <Label htmlFor="offer_letter">Offer Letter (PDF, DOC, DOCX - Max 10MB)</Label>
                   <Input
-                    id="start_date"
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    required
+                    id="offer_letter"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => setOfferLetterFile(e.target.files?.[0] || null)}
+                    className="mt-1"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="end_date">End Date *</Label>
-                  <Input
-                    id="end_date"
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    required
-                  />
+                  {offerLetterFile && <p className="text-sm text-green-600 mt-1">Selected: {offerLetterFile.name}</p>}
                 </div>
               </div>
-              <EnhancedFileUpload
-                bucket="noc-documents"
-                path="requests"
-                onUploadComplete={(url) => setFormData({ ...formData, file_url: url })}
-                currentFile={formData.file_url}
-                label="Offer Letter (Optional)"
-                accept=".pdf,.doc,.docx"
-                maxSize={10}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+
+              <div className="flex justify-end space-x-2">
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogTrigger>
+                <Button type="submit" disabled={submitting || uploading}>
+                  {submitting || uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      {uploading ? "Uploading..." : "Submitting..."}
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Submit Request
+                    </>
+                  )}
                 </Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "Submitting..." : editingRequest ? "Update Request" : "Submit Request"}
-                </Button>
-              </DialogFooter>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      {requests.length === 0 ? (
-        <Card className="border-0 shadow-lg">
-          <CardContent className="p-12 text-center">
-            <div className="flex items-center justify-center w-20 h-20 bg-blue-100 rounded-2xl mx-auto mb-6">
-              <FileText className="h-10 w-10 text-blue-600" />
+      {/* Status Filter */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Label>Filter by Status:</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Requests</SelectItem>
+                  <SelectItem value="pending_teacher">Pending Teacher</SelectItem>
+                  <SelectItem value="approved_teacher">Teacher Approved</SelectItem>
+                  <SelectItem value="pending_tpo">Pending TPO</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No NOC requests yet</h3>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create NOC Request
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6">
-          {requests.map((request) => (
-            <Card key={request.id} className="border-0 shadow-lg">
+            <div className="text-sm text-gray-500">
+              {filteredRequests.length} request{filteredRequests.length !== 1 ? "s" : ""} found
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* NOC Requests List */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {filteredRequests.map((request) => {
+          const statusInfo = statusConfig[request.status as keyof typeof statusConfig]
+          const StatusIcon = statusInfo.icon
+
+          return (
+            <Card key={request.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="flex flex-col sm:flex-row justify-between gap-4">
+                <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="flex items-center gap-3 text-xl">
-                      <div className="w-12 h-12 bg-blue-100 flex items-center justify-center rounded-xl">
-                        <Building2 className="h-6 w-6 text-blue-600" />
-                      </div>
+                    <CardTitle className="text-lg">{request.internship_role}</CardTitle>
+                    <CardDescription className="flex items-center mt-1">
+                      <Building2 className="h-4 w-4 mr-1" />
                       {request.company_name}
-                    </CardTitle>
-                    <CardDescription>{request.position}</CardDescription>
+                    </CardDescription>
                   </div>
-                  <div>{getStatusBadge(request.status)}</div>
+                  <Badge className={statusInfo.color}>
+                    <div className="flex items-center">
+                      <StatusIcon className="h-4 w-4 mr-1" />
+                      <span className="text-xs">{statusInfo.label}</span>
+                    </div>
+                  </Badge>
                 </div>
               </CardHeader>
-
-              <CardContent className="space-y-6">
-                <div className="grid sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl">
-                  <div>
-                    <p className="text-sm font-medium">Start Date</p>
-                    <p>{formatDate(request.start_date)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">End Date</p>
-                    <p>{formatDate(request.end_date)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Requested</p>
-                    <p>{formatDate(request.requested_at)}</p>
-                  </div>
-                  {request.approved_at && (
-                    <div>
-                      <p className="text-sm font-medium">Approved</p>
-                      <p>{formatDate(request.approved_at)}</p>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  {request.internship_location && (
+                    <div className="flex items-center text-sm text-gray-500">
+                      <MapPin className="h-4 w-4 mr-2" />
+                      {request.internship_location}
                     </div>
                   )}
+                  <div className="flex items-center text-sm text-gray-500">
+                    <Clock className="h-4 w-4 mr-2" />
+                    {request.internship_duration}
+                  </div>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    {new Date(request.start_date).toLocaleDateString()} -{" "}
+                    {new Date(request.end_date).toLocaleDateString()}
+                  </div>
                 </div>
 
-                {request.file_url && (
-                  <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                    <div className="flex-1">
-                      <p className="font-medium text-blue-800">Offer letter attached</p>
-                    </div>
-                    <Button variant="ghost" size="sm" asChild>
-                      <a href={getFileUrl(request.file_url)} target="_blank" rel="noopener noreferrer">
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </a>
-                    </Button>
+                {request.stipend && (
+                  <div className="text-sm">
+                    <span className="font-medium">Stipend:</span> {request.stipend}
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-4 border-t">
-                  <Button onClick={() => handleEdit(request)} disabled={request.status === "approved"}>
-                    <Edit className="h-4 w-4 mr-2" /> Edit
-                  </Button>
-                  <Button variant="destructive" onClick={() => handleDelete(request.id)} disabled={request.status === "approved"}>
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete
-                  </Button>
+                {request.description && <p className="text-sm text-gray-600 line-clamp-2">{request.description}</p>}
+
+                {request.rejection_reason && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">
+                      <span className="font-medium">Rejection Reason:</span> {request.rejection_reason}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <div className="text-xs text-gray-400">
+                    Submitted on {new Date(request.created_at).toLocaleDateString()}
+                  </div>
+                  <div className="flex gap-2">
+                    {request.offer_letter_url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(request.offer_letter_url, "_blank")}
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
+                      </Button>
+                    )}
+                    {request.status === "pending_teacher" && (
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(request.id)}>
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Delete
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          )
+        })}
+      </div>
+
+      {filteredRequests.length === 0 && !loading && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {statusFilter === "all" ? "No NOC requests yet" : "No requests found"}
+            </h3>
+            <p className="text-gray-500 mb-4">
+              {statusFilter === "all"
+                ? "Submit your first NOC request to get started with your internship process."
+                : "Try changing the filter to see other requests."}
+            </p>
+            {statusFilter === "all" && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Submit NOC Request
+                  </Button>
+                </DialogTrigger>
+              </Dialog>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )

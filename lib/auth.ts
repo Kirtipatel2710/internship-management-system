@@ -1,4 +1,3 @@
-// lib/auth.ts
 import { supabase } from "./supabase"
 
 export async function handleGoogleSignIn() {

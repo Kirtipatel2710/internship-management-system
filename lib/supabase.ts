@@ -80,7 +80,7 @@ export interface NOCRequest {
   end_date: string
   stipend?: string
   description?: string
-  documents: string[]
+  offer_letter_url?: string
   status: "pending_teacher" | "approved_teacher" | "rejected_teacher" | "pending_tpo" | "approved" | "rejected"
   teacher_approval_at?: string
   teacher_rejection_at?: string
@@ -118,11 +118,12 @@ export interface WeeklyReport {
   id: string
   student_id: string
   week_number: number
-  title: string
-  description: string
-  file_url?: string
-  status: "submitted" | "reviewed" | "approved" | "needs_revision"
-  teacher_comments?: string
+  week_start_date: string
+  week_end_date: string
+  file_url: string
+  comments?: string
+  status: "pending_review" | "approved" | "needs_changes"
+  teacher_feedback?: string
   submitted_at: string
   reviewed_at?: string
   reviewed_by?: string
@@ -134,11 +135,12 @@ export interface WeeklyReport {
 export interface Certificate {
   id: string
   student_id: string
-  title: string
-  issuer: string
+  internship_title: string
+  company_name: string
   file_url: string
-  status: "pending" | "approved" | "rejected"
-  uploaded_at: string
+  status: "pending_review" | "approved" | "rejected"
+  notes?: string
+  submitted_at: string
   approved_at?: string
   approved_by?: string
   rejection_reason?: string
@@ -205,14 +207,24 @@ export async function getCurrentUser() {
       return { user: null, profile: null, error: null }
     }
 
+    // Try to get existing profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", user.id)
       .single()
 
-    if (profileError && profileError.code !== "PGRST116") {
-      // PGRST116 means "no rows found"
+    if (profileError && profileError.code === "PGRST116") {
+      // Profile doesn't exist, create one
+      const { data: newProfile, error: createError } = await createUserProfile(user)
+      if (createError) {
+        console.error("Error creating profile:", createError)
+        return { user, profile: null, error: createError }
+      }
+      return { user, profile: newProfile, error: null }
+    }
+
+    if (profileError) {
       console.error("Get profile error:", profileError)
       return { user, profile: null, error: profileError }
     }
@@ -224,7 +236,7 @@ export async function getCurrentUser() {
   }
 }
 
-// NEW: Function to create user profile
+// Function to create user profile
 export async function createUserProfile(user: any) {
   try {
     const role = assignRoleByEmail(user.email)
@@ -281,6 +293,27 @@ export function assignRoleByEmail(email: string): "student" | "teacher" | "tp_of
   if (email.endsWith("@charusat.ac.in")) return "teacher"
   if (email.endsWith("@charusat.edu.in")) return "student"
   return "student" // default
+}
+
+// File upload helper
+export async function uploadFile(file: File, bucket: string, path: string) {
+  try {
+    const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    })
+
+    if (error) throw error
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from(bucket).getPublicUrl(data.path)
+
+    return { url: publicUrl, error: null }
+  } catch (error) {
+    console.error("File upload error:", error)
+    return { url: null, error }
+  }
 }
 
 // Helper function to check if user is authenticated
