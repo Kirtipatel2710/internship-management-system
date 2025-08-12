@@ -339,3 +339,48 @@ export async function requireRole(allowedRoles: string[]) {
 
   return { user, profile }
 }
+
+export async function submitWeeklyReport(
+  file: File,
+  formData: {
+    week_number: number
+    week_start_date: string
+    week_end_date: string
+    comments?: string
+  }
+) {
+  try {
+    // 1️⃣ Ensure user is logged in
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError) throw userError
+    if (!user) throw new Error("Authentication Required")
+
+    // 2️⃣ Upload file to Supabase Storage
+    const fileName = `${user.id}_week${formData.week_number}_${Date.now()}.pdf`
+    const { url, error: uploadError } = await uploadFile(file, "weekly_reports", fileName)
+    if (uploadError || !url) throw uploadError || new Error("File upload failed")
+
+    // 3️⃣ Insert weekly report
+    const { error: insertError } = await supabase.from("weekly_reports").insert({
+      student_id: user.id,
+      week_number: formData.week_number,
+      week_start_date: formData.week_start_date,
+      week_end_date: formData.week_end_date,
+      file_url: url,
+      comments: formData.comments,
+      status: "pending_review",
+      submitted_at: new Date().toISOString(),
+    })
+
+    if (insertError) throw insertError
+
+    return { success: true, error: null }
+  } catch (error) {
+    console.error("submitWeeklyReport error:", error)
+    return { success: false, error }
+  }
+}

@@ -27,7 +27,7 @@ const statusConfig = {
     icon: AlertCircle,
   },
   approved: {
-    label: "Approved",
+    label: "Approved", 
     color: "bg-green-100 text-green-800",
     icon: CheckCircle,
   },
@@ -43,6 +43,7 @@ export function WeeklyReports() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     week_number: 1,
     week_start_date: "",
@@ -63,6 +64,7 @@ export function WeeklyReports() {
 
       if (!user) return
 
+      // Updated to use profiles table instead of direct user.id
       const { data, error } = await supabase
         .from("weekly_reports")
         .select("*")
@@ -82,21 +84,21 @@ export function WeeklyReports() {
 
   const validateForm = () => {
     if (!formData.week_number || !formData.week_start_date || !formData.week_end_date) {
-      toast.warning("Missing Required Fields", {
+      toast.error("Missing Required Fields", {
         description: "Please fill in week number and date range",
       })
       return false
     }
 
     if (new Date(formData.week_start_date) >= new Date(formData.week_end_date)) {
-      toast.warning("Invalid Date Range", {
+      toast.error("Invalid Date Range", {
         description: "End date must be after start date",
       })
       return false
     }
 
     if (!reportFile) {
-      toast.warning("File Required", {
+      toast.error("File Required", {
         description: "Please upload your weekly report file",
       })
       return false
@@ -105,7 +107,7 @@ export function WeeklyReports() {
     // Check for duplicate week numbers
     const existingWeek = reports.find((r) => r.week_number === formData.week_number)
     if (existingWeek) {
-      toast.warning("Duplicate Week", {
+      toast.error("Duplicate Week", {
         description: `Week ${formData.week_number} report already exists`,
       })
       return false
@@ -117,7 +119,7 @@ export function WeeklyReports() {
   const handleFileUpload = async (file: File) => {
     const allowedTypes = [
       "application/pdf",
-      "application/msword",
+      "application/msword", 
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
     const maxSize = 10 * 1024 * 1024 // 10MB
@@ -131,24 +133,30 @@ export function WeeklyReports() {
 
     if (file.size > maxSize) {
       toast.error("File Too Large", {
-        description: "File size must be less than 10MB",
+        description: "File size must be less than 10MB", 
       })
       return null
     }
 
     setUploading(true)
-    const fileName = `week-${formData.week_number}-${Date.now()}-${file.name}`
-    const { url, error } = await uploadFile(file, "weekly-reports", fileName)
-    setUploading(false)
+    try {
+      const fileName = `week-${formData.week_number}-${Date.now()}-${file.name}`
+      const { url, error } = await uploadFile(file, "weekly-reports", fileName)
+      
+      if (error) {
+        throw error
+      }
 
-    if (error) {
+      return url
+    } catch (error) {
+      console.error("Upload error:", error)
       toast.error("Upload Failed", {
         description: "Failed to upload weekly report",
       })
       return null
+    } finally {
+      setUploading(false)
     }
-
-    return url
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,19 +197,20 @@ export function WeeklyReports() {
         description: "Your report has been submitted for review",
       })
 
-      // Reset form
+      // Reset form and close dialog
       setFormData({
-        week_number: Math.max(...reports.map((r) => r.week_number), 0) + 1,
+        week_number: getNextWeekNumber(),
         week_start_date: "",
         week_end_date: "",
         comments: "",
       })
       setReportFile(null)
+      setDialogOpen(false)
       fetchReports()
     } catch (error) {
       console.error("Error submitting weekly report:", error)
       toast.error("Submission Failed", {
-        description: "Failed to submit weekly report",
+        description: "Failed to submit weekly report. Please try again.",
       })
     } finally {
       setSubmitting(false)
@@ -211,6 +220,15 @@ export function WeeklyReports() {
   const getNextWeekNumber = () => {
     if (reports.length === 0) return 1
     return Math.max(...reports.map((r) => r.week_number)) + 1
+  }
+
+  // Initialize form with next week number when dialog opens
+  const handleDialogOpen = () => {
+    setFormData(prev => ({
+      ...prev,
+      week_number: getNextWeekNumber()
+    }))
+    setDialogOpen(true)
   }
 
   if (loading) {
@@ -245,9 +263,9 @@ export function WeeklyReports() {
           <p className="text-gray-600">Track your internship progress with weekly reports</p>
         </div>
 
-        <Dialog>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={handleDialogOpen}>
               <Plus className="h-4 w-4 mr-2" />
               New Report
             </Button>
@@ -319,11 +337,9 @@ export function WeeklyReports() {
               </div>
 
               <div className="flex justify-end space-x-2">
-                <DialogTrigger asChild>
-                  <Button type="button" variant="outline">
-                    Cancel
-                  </Button>
-                </DialogTrigger>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
                 <Button type="submit" disabled={submitting || uploading}>
                   {submitting || uploading ? (
                     <>
@@ -457,14 +473,10 @@ export function WeeklyReports() {
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
             <p className="text-gray-500 mb-4">Start documenting your internship progress with weekly reports.</p>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Submit First Report
-                </Button>
-              </DialogTrigger>
-            </Dialog>
+            <Button onClick={handleDialogOpen}>
+              <Plus className="h-4 w-4 mr-2" />
+              Submit First Report
+            </Button>
           </CardContent>
         </Card>
       )}

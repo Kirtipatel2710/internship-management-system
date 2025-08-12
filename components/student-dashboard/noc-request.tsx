@@ -66,7 +66,8 @@ const statusConfig = {
   },
 }
 
-export function NOCRequestComponent() {
+// Main component renamed to NOCRequest to match import in StudentDashboard
+export function NOCRequest() {
   const [nocRequests, setNocRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -208,7 +209,7 @@ export function NOCRequestComponent() {
       const { error } = await supabase.from("noc_requests").insert({
         student_id: user.id,
         ...formData,
-        offer_letter_url: offerLetterUrl,
+        documents: offerLetterUrl ? [{ name: "offer_letter", url: offerLetterUrl }] : [],
         status: "pending_teacher",
         priority: "medium",
       })
@@ -509,6 +510,19 @@ export function NOCRequestComponent() {
         {filteredRequests.map((request) => {
           const statusInfo = statusConfig[request.status as keyof typeof statusConfig]
           const StatusIcon = statusInfo.icon
+          
+          // Get document URL from documents array (handling both array and potential string)
+          const getDocumentUrl = (docs: any) => {
+            if (!docs) return null
+            if (typeof docs === 'string') return docs
+            if (Array.isArray(docs)) {
+              const offerDoc = docs.find((doc: any) => doc.name === "offer_letter")
+              return offerDoc?.url || null
+            }
+            return null
+          }
+          
+          const offerLetterUrl = getDocumentUrl(request.documents)
 
           return (
             <Card key={request.id} className="hover:shadow-lg transition-shadow">
@@ -569,11 +583,11 @@ export function NOCRequestComponent() {
                     Submitted on {new Date(request.created_at).toLocaleDateString()}
                   </div>
                   <div className="flex gap-2">
-                    {request.offer_letter_url && (
+                    {offerLetterUrl && (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => window.open(request.offer_letter_url, "_blank")}
+                        onClick={() => window.open(offerLetterUrl, "_blank")}
                       >
                         <Download className="h-3 w-3 mr-1" />
                         Download
@@ -621,3 +635,9 @@ export function NOCRequestComponent() {
     </div>
   )
 }
+
+// Keep the old export for backward compatibility
+export { NOCRequest as NOCRequestComponent }
+
+// Also provide a default export
+export default NOCRequest

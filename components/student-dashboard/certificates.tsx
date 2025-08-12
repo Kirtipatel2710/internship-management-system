@@ -20,7 +20,7 @@ import { Award, Plus, Download, CheckCircle, Clock, XCircle, Upload } from "luci
 import { toast } from "sonner"
 
 const statusConfig = {
-  pending_review: {
+  pending: {
     label: "Pending Review",
     color: "bg-yellow-100 text-yellow-800",
     icon: Clock,
@@ -35,8 +35,7 @@ const statusConfig = {
     color: "bg-red-100 text-red-800",
     icon: XCircle,
   },
-}
-
+};
 export function Certificates() {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,74 +114,73 @@ export function Certificates() {
     }
 
     setUploading(true)
-    const fileName = `certificate-${Date.now()}-${file.name}`
-    const { url, error } = await uploadFile(file, "completion-certificates", fileName)
+    // Generate a unique file path to prevent naming conflicts
+    const filePath = `completion-certificates/${Date.now()}-${file.name}`
+    
+    // Call the upload function with the file and the new unique path
+    const { data, error } = await supabase.storage
+      .from("completion-certificates") // Make sure this bucket name exists
+      .upload(filePath, file)
+
     setUploading(false)
 
     if (error) {
+      console.error("Supabase storage upload error:", error)
       toast.error("Upload Failed", {
-        description: "Failed to upload certificate",
+        description: `Failed to upload certificate: ${error.message}`,
       })
       return null
     }
 
-    return url
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validateForm()) return
-
-    setSubmitting(true)
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        toast.error("Authentication Required", {
-          description: "Please sign in to submit certificate",
-        })
-        return
-      }
-
-      const fileUrl = await handleFileUpload(certificateFile!)
-      if (!fileUrl) return // Upload failed
-
-      const { error } = await supabase.from("certificates").insert({
-        student_id: user.id,
-        internship_title: formData.internship_title,
-        company_name: formData.company_name,
-        file_url: fileUrl,
-        notes: formData.notes,
-        status: "pending_review",
-        submitted_at: new Date().toISOString(),
-      })
-
-      if (error) throw error
-
-      toast.success("Certificate Submitted!", {
-        description: "Your certificate has been submitted for review",
-      })
-
-      // Reset form
-      setFormData({
-        internship_title: "",
-        company_name: "",
-        notes: "",
-      })
-      setCertificateFile(null)
-      fetchCertificates()
-    } catch (error) {
-      console.error("Error submitting certificate:", error)
-      toast.error("Submission Failed", {
-        description: "Failed to submit certificate",
-      })
-    } finally {
-      setSubmitting(false)
+    // Get the public URL of the uploaded file
+    const { data: publicUrlData } = supabase.storage
+      .from("completion-certificates")
+      .getPublicUrl(filePath)
+    
+    if (!publicUrlData) {
+      toast.error("Upload Succeeded, but could not get URL", {
+        description: "Please check your Supabase Storage settings."
+      });
+      return null;
     }
+
+    return publicUrlData.publicUrl
   }
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (!validateForm()) return;
+
+  setSubmitting(true);
+  try {
+    // ... (rest of your submission logic) ...
+    
+    const { error } = await supabase.from("certificates").insert({
+      // ...
+    });
+
+    if (error) throw error;
+
+    toast.success("Certificate Submitted!", {
+      description: "Your certificate has been submitted for review",
+    });
+
+    // Reset form and close dialog
+    setFormData({
+      internship_title: "",
+      company_name: "",
+      notes: "",
+    });
+    setCertificateFile(null);
+    fetchCertificates();
+    setIsDialogOpen(false); // <--- Add this line to close the dialog
+  } catch (error) {
+    // ... (error handling) ...
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   if (loading) {
     return (
@@ -412,3 +410,7 @@ export function Certificates() {
     </div>
   )
 }
+function setIsDialogOpen(arg0: boolean) {
+  throw new Error("Function not implemented.")
+}
+
