@@ -64,7 +64,7 @@ export function StatusTracking() {
       } = await supabase.auth.getUser()
       if (!user) return
 
-      // Fetch all data in parallel
+      // 🆕 Fetch all tables in parallel for better performance
       const [nocData, reportsData, certificatesData] = await Promise.all([
         supabase.from("noc_requests").select("*").eq("student_id", user.id).order("requested_at", { ascending: false }),
         supabase
@@ -78,7 +78,7 @@ export function StatusTracking() {
       // Transform data into unified format
       const allItems: StatusItem[] = []
 
-      // NOC Requests
+      // 🆕 Map NOC requests into unified items
       if (nocData.data) {
         nocData.data.forEach((item) => {
           allItems.push({
@@ -94,7 +94,7 @@ export function StatusTracking() {
         })
       }
 
-      // Weekly Reports
+      // 🆕 Map Weekly Reports into unified items
       if (reportsData.data) {
         reportsData.data.forEach((item) => {
           allItems.push({
@@ -110,7 +110,7 @@ export function StatusTracking() {
         })
       }
 
-      // Certificates
+      // 🆕 Map Certificates into unified items
       if (certificatesData.data) {
         certificatesData.data.forEach((item) => {
           allItems.push({
@@ -126,12 +126,12 @@ export function StatusTracking() {
         })
       }
 
-      // Sort by submission date
+      // 🔹 Sort by most recent submission
       allItems.sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
 
       setStatusItems(allItems)
 
-      // Calculate summary
+      // 🔹 Calculate summary statistics
       const total = allItems.length
       const pending = allItems.filter((item) => item.status === "pending" || item.status === "submitted").length
       const approved = allItems.filter((item) => item.status === "approved" || item.status === "reviewed").length
@@ -157,6 +157,7 @@ export function StatusTracking() {
     fetchStatusData()
   }
 
+  // 🆕 Status Icon helper
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "approved":
@@ -172,6 +173,7 @@ export function StatusTracking() {
     }
   }
 
+  // 🆕 Status Badge helper
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "approved":
@@ -187,6 +189,7 @@ export function StatusTracking() {
     }
   }
 
+  // 🆕 Type Icon helper
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "noc_request":
@@ -200,6 +203,7 @@ export function StatusTracking() {
     }
   }
 
+  // 🆕 Date formatting
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",

@@ -36,11 +36,13 @@ const statusConfig = {
     icon: XCircle,
   },
 };
+
 export function Certificates() {
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     internship_title: "",
     company_name: "",
@@ -58,7 +60,12 @@ export function Certificates() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) return
+      if (!user) {
+        toast.error("Authentication Error", {
+          description: "Please log in to view certificates"
+        })
+        return
+      }
 
       const { data, error } = await supabase
         .from("certificates")
@@ -78,9 +85,16 @@ export function Certificates() {
   }
 
   const validateForm = () => {
-    if (!formData.internship_title || !formData.company_name) {
-      toast.warning("Missing Required Fields", {
-        description: "Please fill in internship title and company name",
+    if (!formData.internship_title.trim()) {
+      toast.warning("Missing Required Field", {
+        description: "Please enter the internship title",
+      })
+      return false
+    }
+
+    if (!formData.company_name.trim()) {
+      toast.warning("Missing Required Field", {
+        description: "Please enter the company name",
       })
       return false
     }
@@ -95,8 +109,8 @@ export function Certificates() {
     return true
   }
 
-  const handleFileUpload = async (file: File) => {
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"]
+  const handleFileUpload = async (file: File): Promise<string | null> => {
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
     const maxSize = 10 * 1024 * 1024 // 10MB
 
     if (!allowedTypes.includes(file.type)) {
@@ -113,74 +127,175 @@ export function Certificates() {
       return null
     }
 
-    setUploading(true)
-    // Generate a unique file path to prevent naming conflicts
-    const filePath = `completion-certificates/${Date.now()}-${file.name}`
-    
-    // Call the upload function with the file and the new unique path
-    const { data, error } = await supabase.storage
-      .from("completion-certificates") // Make sure this bucket name exists
-      .upload(filePath, file)
+    try {
+      setUploading(true)
+      
+      // Generate a unique file path to prevent naming conflicts
+      const timestamp = Date.now()
+      const fileExtension = file.name.split('.').pop()
+      const fileName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+      const filePath = `completion-certificates/${fileName}`
+      
+      // Upload file to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from("completion-certificates")
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
 
-    setUploading(false)
+      if (error) {
+        console.error("Supabase storage upload error:", error)
+        toast.error("Upload Failed", {
+          description: `Failed to upload certificate: ${error.message}`,
+        })
+        return null
+      }
 
-    if (error) {
-      console.error("Supabase storage upload error:", error)
+      // Get the public URL of the uploaded file
+      const { data: publicUrlData } = supabase.storage
+        .from("completion-certificates")
+        .getPublicUrl(filePath)
+      
+      if (!publicUrlData?.publicUrl) {
+        toast.error("Upload Error", {
+          description: "Could not generate public URL for uploaded file"
+        })
+        return null
+      }
+
+      return publicUrlData.publicUrl
+
+    } catch (error) {
+      console.error("File upload error:", error)
       toast.error("Upload Failed", {
-        description: `Failed to upload certificate: ${error.message}`,
+        description: "An unexpected error occurred during file upload"
       })
       return null
+    } finally {
+      setUploading(false)
     }
-
-    // Get the public URL of the uploaded file
-    const { data: publicUrlData } = supabase.storage
-      .from("completion-certificates")
-      .getPublicUrl(filePath)
-    
-    if (!publicUrlData) {
-      toast.error("Upload Succeeded, but could not get URL", {
-        description: "Please check your Supabase Storage settings."
-      });
-      return null;
-    }
-
-    return publicUrlData.publicUrl
   }
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-  if (!validateForm()) return;
+    if (!validateForm()) return
 
-  setSubmitting(true);
-  try {
-    // ... (rest of your submission logic) ...
-    
-    const { error } = await supabase.from("certificates").insert({
-      // ...
-    });
+    setSubmitting(true)
 
-    if (error) throw error;
+    try {
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-    toast.success("Certificate Submitted!", {
-      description: "Your certificate has been submitted for review",
-    });
+      if (!user) {
+        toast.error("Authentication Error", {
+          description: "Please log in to submit certificates"
+        })
+        return
+      }
 
-    // Reset form and close dialog
-    setFormData({
-      internship_title: "",
-      company_name: "",
-      notes: "",
-    });
-    setCertificateFile(null);
-    fetchCertificates();
-    setIsDialogOpen(false); // <--- Add this line to close the dialog
-  } catch (error) {
-    // ... (error handling) ...
-  } finally {
-    setSubmitting(false);
+      // Upload the certificate file first
+      const fileUrl = await handleFileUpload(certificateFile!)
+      
+      if (!fileUrl) {
+        // Error already handled in handleFileUpload
+        return
+      }
+
+      // Insert certificate record into database
+      const certificateData = {
+        student_id: user.id,
+        internship_title: formData.internship_title.trim(),
+        company_name: formData.company_name.trim(),
+        notes: formData.notes.trim() || null,
+        file_url: fileUrl,
+        status: 'pending', // Based on your schema CHECK constraint
+        title: formData.internship_title.trim(), // Added as per schema
+        issuer: formData.company_name.trim(), // Added as per schema
+        submitted_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      const { data, error } = await supabase
+        .from("certificates")
+        .insert(certificateData)
+        .select()
+
+      if (error) {
+        console.error("Database insert error:", error)
+        
+        // If database insert fails, try to clean up the uploaded file
+        try {
+          const filePath = fileUrl.split('/').pop()
+          if (filePath) {
+            await supabase.storage
+              .from("completion-certificates")
+              .remove([`completion-certificates/${filePath}`])
+          }
+        } catch (cleanupError) {
+          console.error("Failed to cleanup uploaded file:", cleanupError)
+        }
+
+        throw error
+      }
+
+      toast.success("Certificate Submitted!", {
+        description: "Your certificate has been submitted for review",
+      })
+
+      // Reset form and close dialog
+      setFormData({
+        internship_title: "",
+        company_name: "",
+        notes: "",
+      })
+      setCertificateFile(null)
+      setIsDialogOpen(false)
+      
+      // Refresh the certificates list
+      await fetchCertificates()
+
+    } catch (error: any) {
+      console.error("Error submitting certificate:", error)
+      
+      let errorMessage = "Failed to submit certificate"
+      if (error?.message) {
+        errorMessage += `: ${error.message}`
+      }
+      
+      toast.error("Submission Failed", {
+        description: errorMessage
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
-};
+
+  const handleDownloadCertificate = (fileUrl: string, fileName: string) => {
+    try {
+      // Create a temporary anchor element to trigger download
+      const link = document.createElement('a')
+      link.href = fileUrl
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      
+      // For better UX, you might want to add download attribute
+      // link.download = fileName
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error("Error downloading certificate:", error)
+      toast.error("Download Failed", {
+        description: "Could not open certificate file"
+      })
+    }
+  }
 
   if (loading) {
     return (
@@ -214,7 +329,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <p className="text-gray-600">Upload and manage your internship completion certificates</p>
         </div>
 
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
@@ -261,7 +376,11 @@ const handleSubmit = async (e: React.FormEvent) => {
                   className="mt-1"
                   required
                 />
-                {certificateFile && <p className="text-sm text-green-600 mt-1">Selected: {certificateFile.name}</p>}
+                {certificateFile && (
+                  <p className="text-sm text-green-600 mt-1">
+                    Selected: {certificateFile.name} ({(certificateFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                )}
               </div>
 
               <div>
@@ -275,11 +394,14 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
 
               <div className="flex justify-end space-x-2">
-                <DialogTrigger asChild>
-                  <Button type="button" variant="outline">
-                    Cancel
-                  </Button>
-                </DialogTrigger>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                  disabled={submitting || uploading}
+                >
+                  Cancel
+                </Button>
                 <Button type="submit" disabled={submitting || uploading}>
                   {submitting || uploading ? (
                     <>
@@ -329,7 +451,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "pending_review").length}</div>
+            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "pending").length}</div>
             <p className="text-xs text-muted-foreground">Awaiting verification</p>
           </CardContent>
         </Card>
@@ -339,20 +461,20 @@ const handleSubmit = async (e: React.FormEvent) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {certificates.map((certificate) => {
           const statusInfo = statusConfig[certificate.status as keyof typeof statusConfig]
-          const StatusIcon = statusInfo.icon
+          const StatusIcon = statusInfo?.icon || Clock
 
           return (
             <Card key={certificate.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-lg">{certificate.internship_title}</CardTitle>
-                    <CardDescription className="mt-1">{certificate.company_name}</CardDescription>
+                    <CardTitle className="text-lg">{certificate.internship_title || certificate.title}</CardTitle>
+                    <CardDescription className="mt-1">{certificate.company_name || certificate.issuer}</CardDescription>
                   </div>
-                  <Badge className={statusInfo.color}>
+                  <Badge className={statusInfo?.color || "bg-gray-100 text-gray-800"}>
                     <div className="flex items-center">
                       <StatusIcon className="h-4 w-4 mr-1" />
-                      <span className="text-xs">{statusInfo.label}</span>
+                      <span className="text-xs">{statusInfo?.label || "Unknown"}</span>
                     </div>
                   </Badge>
                 </div>
@@ -374,12 +496,19 @@ const handleSubmit = async (e: React.FormEvent) => {
 
                 <div className="flex justify-between items-center">
                   <div className="text-xs text-gray-400">
-                    Submitted: {new Date(certificate.submitted_at).toLocaleDateString()}
+                    Submitted: {new Date(certificate.submitted_at || certificate.created_at).toLocaleDateString()}
                     {certificate.approved_at && (
                       <span className="block">Approved: {new Date(certificate.approved_at).toLocaleDateString()}</span>
                     )}
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => window.open(certificate.file_url, "_blank")}>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => handleDownloadCertificate(
+                      certificate.file_url, 
+                      `${certificate.internship_title || certificate.title}_certificate`
+                    )}
+                  >
                     <Download className="h-3 w-3 mr-1" />
                     View
                   </Button>
@@ -396,21 +525,13 @@ const handleSubmit = async (e: React.FormEvent) => {
             <Award className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No certificates yet</h3>
             <p className="text-gray-500 mb-4">Upload your internship completion certificates for verification.</p>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Upload First Certificate
-                </Button>
-              </DialogTrigger>
-            </Dialog>
+            <Button onClick={() => setIsDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Upload First Certificate
+            </Button>
           </CardContent>
         </Card>
       )}
     </div>
   )
 }
-function setIsDialogOpen(arg0: boolean) {
-  throw new Error("Function not implemented.")
-}
-
