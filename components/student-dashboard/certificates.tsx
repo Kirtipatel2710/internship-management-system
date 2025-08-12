@@ -25,6 +25,11 @@ const statusConfig = {
     color: "bg-yellow-100 text-yellow-800",
     icon: Clock,
   },
+  pending_review: {
+    label: "Pending Review",
+    color: "bg-yellow-100 text-yellow-800",
+    icon: Clock,
+  },
   approved: {
     label: "Approved",
     color: "bg-green-100 text-green-800",
@@ -212,9 +217,7 @@ export function Certificates() {
         company_name: formData.company_name.trim(),
         notes: formData.notes.trim() || null,
         file_url: fileUrl,
-        status: 'pending', // Based on your schema CHECK constraint
-        title: formData.internship_title.trim(), // Added as per schema
-        issuer: formData.company_name.trim(), // Added as per schema
+        status: 'pending_review', // Using pending_review to match your Certificate type
         submitted_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -451,7 +454,7 @@ export function Certificates() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "pending").length}</div>
+            <div className="text-2xl font-bold">{certificates.filter((c) => c.status === "pending_review").length}</div>
             <p className="text-xs text-muted-foreground">Awaiting verification</p>
           </CardContent>
         </Card>
@@ -468,8 +471,8 @@ export function Certificates() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-lg">{certificate.internship_title || certificate.title}</CardTitle>
-                    <CardDescription className="mt-1">{certificate.company_name || certificate.issuer}</CardDescription>
+                    <CardTitle className="text-lg">{certificate.internship_title}</CardTitle>
+                    <CardDescription className="mt-1">{certificate.company_name}</CardDescription>
                   </div>
                   <Badge className={statusInfo?.color || "bg-gray-100 text-gray-800"}>
                     <div className="flex items-center">
@@ -506,7 +509,7 @@ export function Certificates() {
                     variant="outline" 
                     onClick={() => handleDownloadCertificate(
                       certificate.file_url, 
-                      `${certificate.internship_title || certificate.title}_certificate`
+                      `${certificate.internship_title}_certificate`
                     )}
                   >
                     <Download className="h-3 w-3 mr-1" />

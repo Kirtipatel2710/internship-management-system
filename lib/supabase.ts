@@ -5,6 +5,44 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Add this to your types file or @/lib/supabase.ts
+
+export interface Certificate {
+  id: string
+  student_id: string
+  internship_title: string
+  company_name: string
+  notes?: string | null
+  file_url: string
+  status: 'pending_review' | 'approved' | 'rejected'
+  uploaded_at?: string
+  approved_at?: string | null
+  approved_by?: string | null
+  rejection_reason?: string | null
+  created_at: string
+  updated_at: string
+  submitted_at: string
+}
+
+// Database row type (matches your schema exactly)
+export interface DatabaseCertificate {
+  id: string
+  student_id: string | null
+  title: string | null
+  issuer: string
+  file_url: string
+  status: string
+  uploaded_at: string | null
+  approved_at: string | null
+  approved_by: string | null
+  rejection_reason: string | null
+  created_at: string
+  updated_at: string
+  company_name: string | null
+  internship_title: string | null
+  notes: string | null
+  submitted_at: string
+}
 // Database types
 export interface Profile {
   id: string
