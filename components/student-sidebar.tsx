@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Building2,
   FileText,
@@ -16,9 +17,10 @@ import {
   Home,
   Sparkles,
   TrendingUp,
-  User,
+  LogOut,
 } from "lucide-react"
 import { useState } from "react"
+import { signOut, useSession } from "next-auth/react"
 
 interface StudentSidebarProps {
   activeTab: string
@@ -102,6 +104,12 @@ const sidebarItems = [
 ]
 
 function SidebarContent({ activeTab, onTabChange, userProfile, className }: StudentSidebarProps) {
+  const { data: session } = useSession()
+
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: "/" })
+  }
+
   return (
     <div className={cn("h-full flex flex-col bg-transparent", className)}>
       {/* Modern Header */}
@@ -194,7 +202,7 @@ function SidebarContent({ activeTab, onTabChange, userProfile, className }: Stud
       </ScrollArea>
 
       {/* Modern Footer with Progress */}
-      <div className="p-4 border-t border-gray-200/30">
+      <div className="p-4 border-t border-gray-200/30 space-y-4">
         <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-4 border border-blue-100">
           <div className="flex items-center gap-3 mb-3">
             <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl shadow-lg">
@@ -220,17 +228,32 @@ function SidebarContent({ activeTab, onTabChange, userProfile, className }: Stud
         </div>
 
         {/* User Profile Section */}
-        <div className="mt-4 flex items-center gap-3 p-3 bg-white/50 rounded-xl border border-gray-200/50">
-          <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-gray-600 to-gray-700 rounded-lg">
-            <User className="h-4 w-4 text-white" />
-          </div>
+        <div className="flex items-center gap-3 p-3 bg-white/50 rounded-xl border border-gray-200/50">
+          <Avatar className="h-8 w-8 ring-2 ring-blue-200">
+            <AvatarImage src={session?.user?.image || "/placeholder.svg"} />
+            <AvatarFallback className="bg-gradient-to-br from-gray-600 to-gray-700 text-white font-bold text-sm">
+              {session?.user?.name?.charAt(0)?.toUpperCase() || "S"}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{userProfile?.name || "Student"}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {userProfile?.name || session?.user?.name || "Student"}
+            </p>
             <p className="text-xs text-gray-500">
               {userProfile?.enrollment_no || "ID: " + userProfile?.id?.slice(0, 8)}
             </p>
           </div>
         </div>
+
+        {/* Logout Button */}
+        <Button
+          onClick={handleSignOut}
+          variant="outline"
+          className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all duration-300 bg-transparent"
+        >
+          <LogOut className="h-4 w-4 mr-3" />
+          Sign Out
+        </Button>
       </div>
     </div>
   )

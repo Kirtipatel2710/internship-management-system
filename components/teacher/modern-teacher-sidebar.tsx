@@ -1,24 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
-  LayoutDashboard,
+  Home,
   FileText,
   Users,
   Settings,
   ChevronDown,
   ChevronRight,
-  Clock,
   CheckCircle,
+  Clock,
   XCircle,
   GraduationCap,
-  Menu,
+  Building2,
   X,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase"
 
 interface ModernTeacherSidebarProps {
   activeSection: string
@@ -35,103 +36,161 @@ export function ModernTeacherSidebar({
   setCollapsed,
   userProfile,
 }: ModernTeacherSidebarProps) {
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(["noc-management", "application-management"])
+  const [nocExpanded, setNocExpanded] = useState(true)
+  const [applicationExpanded, setApplicationExpanded] = useState(true)
+  const [stats, setStats] = useState({
+    pendingNocs: 0,
+    pendingApplications: 0,
+  })
+  const [mounted, setMounted] = useState(false)
 
-  const toggleMenu = (menuId: string) => {
-    if (collapsed) return
-    setExpandedMenus((prev) => (prev.includes(menuId) ? prev.filter((id) => id !== menuId) : [...prev, menuId]))
+  useEffect(() => {
+    setMounted(true)
+    fetchStats()
+  }, [])
+
+  const fetchStats = async () => {
+    try {
+      // Fetch pending NOCs count
+      const { count: nocCount } = await supabase
+        .from("noc_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending_teacher")
+
+      // Fetch pending applications count
+      const { count: appCount } = await supabase
+        .from("internship_applications")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending_teacher")
+
+      setStats({
+        pendingNocs: nocCount || 0,
+        pendingApplications: appCount || 0,
+      })
+    } catch (error) {
+      console.error("Error fetching stats:", error)
+    }
   }
 
-  const menuItems = [
+  const sidebarItems = [
     {
       id: "overview",
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      section: "overview",
-      gradient: "from-blue-500 to-blue-600",
-    },
-    {
-      id: "noc-management",
-      label: "NOC Management",
-      icon: FileText,
-      hasSubmenu: true,
-      gradient: "from-emerald-500 to-emerald-600",
-      submenu: [
-        {
-          id: "all-nocs",
-          label: "All NOCs",
-          icon: FileText,
-          section: "all-nocs",
-          color: "bg-gray-500",
-        },
-        {
-          id: "pending-nocs",
-          label: "Pending NOCs",
-          icon: Clock,
-          section: "pending-nocs",
-          color: "bg-orange-500",
-        },
-        {
-          id: "approved-nocs",
-          label: "Approved NOCs",
-          icon: CheckCircle,
-          section: "approved-nocs",
-          color: "bg-green-500",
-        },
-        {
-          id: "rejected-nocs",
-          label: "Rejected NOCs",
-          icon: XCircle,
-          section: "rejected-nocs",
-          color: "bg-red-500",
-        },
-      ],
-    },
-    {
-      id: "application-management",
-      label: "Application Management",
-      icon: Users,
-      hasSubmenu: true,
-      gradient: "from-purple-500 to-purple-600",
-      submenu: [
-        {
-          id: "all-applications",
-          label: "All Applications",
-          icon: Users,
-          section: "all-applications",
-          color: "bg-gray-500",
-        },
-        {
-          id: "pending-applications",
-          label: "Pending Applications",
-          icon: Clock,
-          section: "pending-applications",
-          color: "bg-orange-500",
-        },
-        {
-          id: "approved-applications",
-          label: "Approved Applications",
-          icon: CheckCircle,
-          section: "approved-applications",
-          color: "bg-green-500",
-        },
-        {
-          id: "rejected-applications",
-          label: "Rejected Applications",
-          icon: XCircle,
-          section: "rejected-applications",
-          color: "bg-red-500",
-        },
-      ],
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: Settings,
-      section: "settings",
-      gradient: "from-gray-500 to-gray-600",
+      label: "Dashboard Overview",
+      icon: Home,
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      hoverColor: "hover:bg-blue-100",
     },
   ]
+
+  const nocItems = [
+    {
+      id: "all-nocs",
+      label: "All NOCs",
+      icon: FileText,
+      color: "text-gray-600",
+    },
+    {
+      id: "pending-nocs",
+      label: "Pending NOCs",
+      icon: Clock,
+      color: "text-orange-600",
+      badge: stats.pendingNocs,
+    },
+    {
+      id: "approved-nocs",
+      label: "Approved NOCs",
+      icon: CheckCircle,
+      color: "text-green-600",
+    },
+    {
+      id: "rejected-nocs",
+      label: "Rejected NOCs",
+      icon: XCircle,
+      color: "text-red-600",
+    },
+  ]
+
+  const applicationItems = [
+    {
+      id: "all-applications",
+      label: "All Applications",
+      icon: Users,
+      color: "text-gray-600",
+    },
+    {
+      id: "pending-applications",
+      label: "Pending Applications",
+      icon: Clock,
+      color: "text-orange-600",
+      badge: stats.pendingApplications,
+    },
+    {
+      id: "approved-applications",
+      label: "Approved Applications",
+      icon: CheckCircle,
+      color: "text-green-600",
+    },
+    {
+      id: "rejected-applications",
+      label: "Rejected Applications",
+      icon: XCircle,
+      color: "text-red-600",
+    },
+  ]
+
+  const SidebarItem = ({ item, isSubItem = false }: { item: any; isSubItem?: boolean }) => (
+    <Button
+      variant="ghost"
+      className={cn(
+        "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
+        isSubItem && "ml-4 pl-8",
+        activeSection === item.id
+          ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg transform scale-[1.02]"
+          : `text-gray-600 hover:text-gray-900 ${item.bgColor || "hover:bg-gray-100"} hover:shadow-md hover:scale-[1.01]`,
+        collapsed && !isSubItem && "justify-center px-2",
+      )}
+      onClick={() => onSectionChange(item.id)}
+    >
+      <div className="flex items-center gap-3 w-full">
+        <div
+          className={cn(
+            "flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300",
+            activeSection === item.id ? "bg-white/20 shadow-sm" : "bg-gray-100 group-hover:bg-white/80",
+          )}
+        >
+          <item.icon
+            className={cn(
+              "h-4 w-4 transition-all duration-300",
+              activeSection === item.id ? "text-white" : `${item.color} group-hover:text-gray-700`,
+            )}
+          />
+        </div>
+        {!collapsed && (
+          <div className="flex-1 text-left">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-sm">{item.label}</span>
+              {item.badge && item.badge > 0 && (
+                <Badge
+                  className={cn(
+                    "text-xs px-2 py-0.5 animate-pulse",
+                    activeSection === item.id ? "bg-white/20 text-white border-white/30" : "bg-orange-500 text-white",
+                  )}
+                >
+                  {item.badge}
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </Button>
+  )
+
+  // Don't render until mounted to prevent hydration issues
+  if (!mounted) {
+    return null
+  }
 
   return (
     <>
@@ -141,138 +200,149 @@ export function ModernTeacherSidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed left-0 top-0 h-full bg-white shadow-2xl border-r border-gray-200 z-50 transition-all duration-300 ease-in-out",
-          collapsed ? "w-0 lg:w-16" : "w-80",
+          "fixed left-0 top-0 z-50 h-full bg-white shadow-xl transition-all duration-300 ease-in-out",
+          collapsed ? "w-16 lg:w-16" : "w-80 lg:w-80",
+          "lg:translate-x-0",
+          collapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0",
         )}
       >
-        {/* Header */}
-        <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-emerald-600 to-blue-600">
-          <div className="flex items-center justify-between">
-            {!collapsed && (
+        <div className="h-full flex flex-col">
+          {/* Header */}
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                  <GraduationCap className="h-7 w-7 text-white" />
+                <div className="relative">
+                  <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-600 rounded-2xl shadow-lg">
+                    <GraduationCap className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
                 </div>
-                <div className="text-white">
-                  <h2 className="text-xl font-bold">Teacher Portal</h2>
-                  <p className="text-emerald-100 text-sm">Internship Management</p>
-                </div>
+                {!collapsed && (
+                  <div>
+                    <h2 className="font-bold text-gray-900 text-lg">Teacher Portal</h2>
+                    <p className="text-xs text-gray-500 font-medium">Internship Management</p>
+                  </div>
+                )}
               </div>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setCollapsed(!collapsed)}
-              className="text-white hover:bg-white/20 lg:hidden"
-            >
-              {collapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
-            </Button>
+              <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="lg:hidden">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Navigation */}
-        <ScrollArea className="h-[calc(100vh-200px)]">
-          <div className="p-4 space-y-2">
-            {menuItems.map((item) => (
-              <div key={item.id} className="space-y-1">
-                {/* Main Menu Item */}
+          {/* Navigation */}
+          <div className="flex-1 px-3 py-4 overflow-auto">
+            <div className="space-y-2">
+              {/* Dashboard Overview */}
+              {sidebarItems.map((item) => (
+                <SidebarItem key={item.id} item={item} />
+              ))}
+
+              {/* NOC Requests Section */}
+              <div className="pt-4">
                 <Button
                   variant="ghost"
                   className={cn(
-                    "w-full justify-start h-12 text-left font-medium transition-all duration-200 group relative overflow-hidden",
-                    activeSection === item.section
-                      ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg hover:shadow-xl`
-                      : "hover:bg-gray-50 text-gray-700 hover:text-gray-900",
-                    collapsed && "justify-center px-0",
+                    "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group",
+                    collapsed && "justify-center px-2",
                   )}
-                  onClick={() => {
-                    if (item.hasSubmenu) {
-                      toggleMenu(item.id)
-                    } else {
-                      onSectionChange(item.section)
-                    }
-                  }}
+                  onClick={() => !collapsed && setNocExpanded(!nocExpanded)}
                 >
                   <div className="flex items-center gap-3 w-full">
-                    <item.icon
-                      className={cn(
-                        "h-5 w-5 transition-transform duration-200",
-                        activeSection === item.section && "scale-110",
-                      )}
-                    />
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-all duration-300">
+                      <FileText className="h-4 w-4 text-purple-600" />
+                    </div>
                     {!collapsed && (
                       <>
-                        <span className="flex-1 truncate">{item.label}</span>
-                        {item.hasSubmenu && (
-                          <div className="transition-transform duration-200">
-                            {expandedMenus.includes(item.id) ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </div>
+                        <span className="font-semibold text-gray-700 flex-1 text-left">NOC Requests</span>
+                        {nocExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
                         )}
                       </>
                     )}
                   </div>
                 </Button>
 
-                {/* Submenu */}
-                {item.hasSubmenu && expandedMenus.includes(item.id) && !collapsed && (
-                  <div className="ml-4 space-y-1 border-l-2 border-gray-100 pl-4 py-2">
-                    {item.submenu?.map((subItem) => (
-                      <Button
-                        key={subItem.id}
-                        variant="ghost"
-                        className={cn(
-                          "w-full justify-start h-10 text-sm transition-all duration-200 group",
-                          activeSection === subItem.section
-                            ? "bg-blue-50 text-blue-700 font-medium"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
-                        )}
-                        onClick={() => onSectionChange(subItem.section)}
-                      >
-                        <div className="flex items-center gap-3 w-full">
-                          <div
-                            className={cn(
-                              "w-2 h-2 rounded-full transition-all duration-200",
-                              subItem.color || "bg-gray-300",
-                              "group-hover:scale-125",
-                            )}
-                          />
-                          <subItem.icon className="h-4 w-4" />
-                          <span className="flex-1 truncate">{subItem.label}</span>
-                        </div>
-                      </Button>
+                {!collapsed && nocExpanded && (
+                  <div className="mt-2 space-y-1">
+                    {nocItems.map((item) => (
+                      <SidebarItem key={item.id} item={item} isSubItem />
                     ))}
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        </ScrollArea>
 
-        {/* User Profile */}
-        {!collapsed && (
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-              <Avatar className="h-12 w-12 ring-2 ring-emerald-200">
-                <AvatarImage src={userProfile?.avatar_url || ""} />
-                <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-blue-600 text-white font-bold text-lg">
-                  {userProfile?.name?.charAt(0)?.toUpperCase() || "T"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{userProfile?.name || "Teacher"}</p>
-                <p className="text-xs text-gray-500 truncate">Teacher</p>
-                <div className="flex items-center gap-1 mt-1">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-xs text-green-600 font-medium">Online</span>
-                </div>
+              {/* Internship Applications Section */}
+              <div className="pt-2">
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group",
+                    collapsed && "justify-center px-2",
+                  )}
+                  onClick={() => !collapsed && setApplicationExpanded(!applicationExpanded)}
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-all duration-300">
+                      <Building2 className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    {!collapsed && (
+                      <>
+                        <span className="font-semibold text-gray-700 flex-1 text-left">Applications</span>
+                        {applicationExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Button>
+
+                {!collapsed && applicationExpanded && (
+                  <div className="mt-2 space-y-1">
+                    {applicationItems.map((item) => (
+                      <SidebarItem key={item.id} item={item} isSubItem />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Settings */}
+              <div className="pt-4">
+                <SidebarItem
+                  item={{
+                    id: "settings",
+                    label: "Settings",
+                    icon: Settings,
+                    color: "text-gray-600",
+                    bgColor: "hover:bg-gray-100",
+                  }}
+                />
               </div>
             </div>
           </div>
-        )}
+
+          {/* User Profile */}
+          {!collapsed && (
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100">
+                <Avatar className="h-10 w-10 ring-2 ring-blue-200">
+                  <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg"} />
+                  <AvatarFallback className="bg-gradient-to-br from-blue-600 to-purple-600 text-white font-bold">
+                    {userProfile?.name?.charAt(0)?.toUpperCase() || "T"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{userProfile?.name || "Teacher"}</p>
+                  <p className="text-xs text-gray-500 truncate">Teacher</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </>
   )

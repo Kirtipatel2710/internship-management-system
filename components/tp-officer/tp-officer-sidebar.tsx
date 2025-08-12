@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   LayoutDashboard,
   FileText,
@@ -17,7 +18,9 @@ import {
   XCircle,
   Plus,
   Eye,
+  LogOut,
 } from "lucide-react"
+import { signOut, useSession } from "next-auth/react"
 
 interface TPOfficerSidebarProps {
   activeSection: string
@@ -25,6 +28,7 @@ interface TPOfficerSidebarProps {
 }
 
 export function TPOfficerSidebar({ activeSection, setActiveSection }: TPOfficerSidebarProps) {
+  const { data: session } = useSession()
   const [expandedMenus, setExpandedMenus] = useState<string[]>([
     "noc-management",
     "company-verification",
@@ -34,6 +38,10 @@ export function TPOfficerSidebar({ activeSection, setActiveSection }: TPOfficerS
 
   const toggleMenu = (menuId: string) => {
     setExpandedMenus((prev) => (prev.includes(menuId) ? prev.filter((id) => id !== menuId) : [...prev, menuId]))
+  }
+
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: "/" })
   }
 
   const menuItems = [
@@ -183,7 +191,7 @@ export function TPOfficerSidebar({ activeSection, setActiveSection }: TPOfficerS
   ]
 
   return (
-    <div className="fixed left-0 top-0 h-full w-64 bg-white shadow-xl border-r border-gray-200 z-50">
+    <div className="fixed left-0 top-0 h-full w-64 bg-white shadow-xl border-r border-gray-200 z-50 flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
@@ -198,7 +206,7 @@ export function TPOfficerSidebar({ activeSection, setActiveSection }: TPOfficerS
       </div>
 
       {/* Navigation */}
-      <nav className="p-4 space-y-2 overflow-y-auto h-[calc(100vh-120px)]">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {menuItems.map((item) => (
           <div key={item.id}>
             {/* Main Menu Item */}
@@ -250,6 +258,33 @@ export function TPOfficerSidebar({ activeSection, setActiveSection }: TPOfficerS
           </div>
         ))}
       </nav>
+
+      {/* User Profile & Logout */}
+      <div className="p-4 border-t border-gray-200 space-y-3">
+        {/* User Profile */}
+        <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100">
+          <Avatar className="h-10 w-10 ring-2 ring-blue-200">
+            <AvatarImage src={session?.user?.image || "/placeholder.svg"} />
+            <AvatarFallback className="bg-gradient-to-br from-blue-600 to-purple-600 text-white font-bold">
+              {session?.user?.name?.charAt(0)?.toUpperCase() || "T"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">{session?.user?.name || "TP Officer"}</p>
+            <p className="text-xs text-gray-500 truncate">Training & Placement</p>
+          </div>
+        </div>
+
+        {/* Logout Button */}
+        <Button
+          onClick={handleSignOut}
+          variant="outline"
+          className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all duration-300 bg-transparent"
+        >
+          <LogOut className="h-4 w-4 mr-3" />
+          Sign Out
+        </Button>
+      </div>
     </div>
   )
 }

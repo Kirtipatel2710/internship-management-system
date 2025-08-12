@@ -1,24 +1,13 @@
 "use client"
 
-import { cn } from "@/lib/utils"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Home,
-  FileText,
-  Users,
-  Settings,
-  ChevronDown,
-  ChevronRight,
-  CheckCircle,
-  Clock,
-  XCircle,
-  GraduationCap,
-  Building2,
-} from "lucide-react"
-import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabaseClient"
+import { Badge } from "@/components/ui/badge"
+import { LayoutDashboard, FileText, BookOpen, Settings, LogOut, Clock, CheckCircle, XCircle, Users } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface TeacherSidebarProps {
   activeSection: string
@@ -28,287 +17,178 @@ interface TeacherSidebarProps {
 }
 
 export function TeacherSidebar({ activeSection, onSectionChange, collapsed, userProfile }: TeacherSidebarProps) {
-  const [nocExpanded, setNocExpanded] = useState(true)
-  const [applicationExpanded, setApplicationExpanded] = useState(true)
-  const [stats, setStats] = useState({
-    pendingNocs: 0,
-    pendingApplications: 0,
-  })
+  const router = useRouter()
+  const [isCollapsing, setIsCollapsing] = useState(false)
 
-  useEffect(() => {
-    fetchStats()
-  }, [])
-
-  const fetchStats = async () => {
+  const handleSignOut = async () => {
     try {
-      // Fetch pending NOCs count
-      const { count: nocCount } = await supabase
-        .from("noc_requests")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending_teacher")
-
-      // Fetch pending applications count
-      const { count: appCount } = await supabase
-        .from("internship_applications")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending_teacher")
-
-      setStats({
-        pendingNocs: nocCount || 0,
-        pendingApplications: appCount || 0,
+      await signOut({
+        callbackUrl: "/auth/signin",
+        redirect: true,
       })
     } catch (error) {
-      console.error("Error fetching stats:", error)
+      console.error("Error signing out:", error)
     }
   }
 
-  const sidebarItems = [
+  const menuItems = [
     {
       id: "overview",
-      label: "Dashboard Overview",
-      icon: Home,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
-      hoverColor: "hover:bg-blue-100",
+      label: "Overview",
+      icon: LayoutDashboard,
+      badge: null,
     },
-  ]
-
-  const nocItems = [
     {
-      id: "all-nocs",
-      label: "All NOCs",
+      id: "noc-management",
+      label: "NOC Management",
       icon: FileText,
-      color: "text-gray-600",
+      badge: null,
+      submenu: [
+        { id: "all-nocs", label: "All NOCs", icon: FileText },
+        { id: "pending-nocs", label: "Pending", icon: Clock },
+        { id: "approved-nocs", label: "Approved", icon: CheckCircle },
+        { id: "rejected-nocs", label: "Rejected", icon: XCircle },
+      ],
     },
     {
-      id: "pending-nocs",
-      label: "Pending NOCs",
-      icon: Clock,
-      color: "text-orange-600",
-      badge: stats.pendingNocs,
+      id: "application-management",
+      label: "Applications",
+      icon: BookOpen,
+      badge: null,
+      submenu: [
+        { id: "all-applications", label: "All Applications", icon: BookOpen },
+        { id: "pending-applications", label: "Pending", icon: Clock },
+        { id: "approved-applications", label: "Approved", icon: CheckCircle },
+        { id: "rejected-applications", label: "Rejected", icon: XCircle },
+      ],
     },
     {
-      id: "approved-nocs",
-      label: "Approved NOCs",
-      icon: CheckCircle,
-      color: "text-green-600",
-    },
-    {
-      id: "rejected-nocs",
-      label: "Rejected NOCs",
-      icon: XCircle,
-      color: "text-red-600",
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+      badge: null,
     },
   ]
 
-  const applicationItems = [
-    {
-      id: "all-applications",
-      label: "All Applications",
-      icon: Users,
-      color: "text-gray-600",
-    },
-    {
-      id: "pending-applications",
-      label: "Pending Applications",
-      icon: Clock,
-      color: "text-orange-600",
-      badge: stats.pendingApplications,
-    },
-    {
-      id: "approved-applications",
-      label: "Approved Applications",
-      icon: CheckCircle,
-      color: "text-green-600",
-    },
-    {
-      id: "rejected-applications",
-      label: "Rejected Applications",
-      icon: XCircle,
-      color: "text-red-600",
-    },
-  ]
+  const isSubmenuActive = (item: any) => {
+    return item.submenu?.some((sub: any) => sub.id === activeSection)
+  }
 
-  const SidebarItem = ({ item, isSubItem = false }: { item: any; isSubItem?: boolean }) => (
-    <Button
-      variant="ghost"
-      className={cn(
-        "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
-        isSubItem && "ml-4 pl-8",
-        activeSection === item.id
-          ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg transform scale-[1.02]"
-          : `text-gray-600 hover:text-gray-900 ${item.bgColor || "hover:bg-gray-100"} hover:shadow-md hover:scale-[1.01]`,
-        collapsed && !isSubItem && "justify-center px-2",
-      )}
-      onClick={() => onSectionChange(item.id)}
-    >
-      <div className="flex items-center gap-3 w-full">
-        <div
-          className={cn(
-            "flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300",
-            activeSection === item.id ? "bg-white/20 shadow-sm" : "bg-gray-100 group-hover:bg-white/80",
-          )}
-        >
-          <item.icon
-            className={cn(
-              "h-4 w-4 transition-all duration-300",
-              activeSection === item.id ? "text-white" : `${item.color} group-hover:text-gray-700`,
-            )}
-          />
-        </div>
+  const renderMenuItem = (item: any, isSubmenu = false) => {
+    const isActive = activeSection === item.id || (!isSubmenu && isSubmenuActive(item))
+    const Icon = item.icon
+
+    return (
+      <button
+        key={item.id}
+        onClick={() => onSectionChange(item.id)}
+        className={cn(
+          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200",
+          isSubmenu ? "ml-6 text-sm" : "text-sm font-medium",
+          isActive ? "bg-blue-100 text-blue-700 shadow-sm" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+          collapsed && !isSubmenu && "justify-center px-2",
+        )}
+      >
+        <Icon className={cn("h-5 w-5 flex-shrink-0", isSubmenu && "h-4 w-4")} />
         {!collapsed && (
-          <div className="flex-1 text-left">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm">{item.label}</span>
-              {item.badge && item.badge > 0 && (
-                <Badge
-                  className={cn(
-                    "text-xs px-2 py-0.5 animate-pulse",
-                    activeSection === item.id ? "bg-white/20 text-white border-white/30" : "bg-orange-500 text-white",
-                  )}
-                >
-                  {item.badge}
-                </Badge>
-              )}
+          <>
+            <span className="flex-1 truncate">{item.label}</span>
+            {item.badge && (
+              <Badge variant="secondary" className="ml-auto">
+                {item.badge}
+              </Badge>
+            )}
+          </>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-white border-r border-gray-200">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        {!collapsed ? (
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-semibold text-gray-900 truncate">Teacher Portal</h2>
+              <p className="text-xs text-gray-500 truncate">Management Dashboard</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-center">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users className="h-6 w-6 text-blue-600" />
             </div>
           </div>
         )}
       </div>
-    </Button>
-  )
-
-  return (
-    <div className="h-full flex flex-col bg-white">
-      {/* Header */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-600 rounded-2xl shadow-lg">
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
-          </div>
-          {!collapsed && (
-            <div>
-              <h2 className="font-bold text-gray-900 text-lg">Teacher Portal</h2>
-              <p className="text-xs text-gray-500 font-medium">Internship Management</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <div className="flex-1 px-3 py-4 overflow-auto">
-        <div className="space-y-2">
-          {/* Dashboard Overview */}
-          {sidebarItems.map((item) => (
-            <SidebarItem key={item.id} item={item} />
-          ))}
-
-          {/* NOC Requests Section */}
-          <div className="pt-4">
-            <Button
-              variant="ghost"
-              className={cn(
-                "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group",
-                collapsed && "justify-center px-2",
-              )}
-              onClick={() => !collapsed && setNocExpanded(!nocExpanded)}
-            >
-              <div className="flex items-center gap-3 w-full">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-all duration-300">
-                  <FileText className="h-4 w-4 text-purple-600" />
-                </div>
-                {!collapsed && (
-                  <>
-                    <span className="font-semibold text-gray-700 flex-1 text-left">NOC Requests</span>
-                    {nocExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-gray-400" />
-                    )}
-                  </>
-                )}
-              </div>
-            </Button>
-
-            {!collapsed && nocExpanded && (
-              <div className="mt-2 space-y-1">
-                {nocItems.map((item) => (
-                  <SidebarItem key={item.id} item={item} isSubItem />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Internship Applications Section */}
-          <div className="pt-2">
-            <Button
-              variant="ghost"
-              className={cn(
-                "w-full justify-start h-auto p-3 rounded-xl transition-all duration-300 group",
-                collapsed && "justify-center px-2",
-              )}
-              onClick={() => !collapsed && setApplicationExpanded(!applicationExpanded)}
-            >
-              <div className="flex items-center gap-3 w-full">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-all duration-300">
-                  <Building2 className="h-4 w-4 text-emerald-600" />
-                </div>
-                {!collapsed && (
-                  <>
-                    <span className="font-semibold text-gray-700 flex-1 text-left">Applications</span>
-                    {applicationExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-gray-400" />
-                    )}
-                  </>
-                )}
-              </div>
-            </Button>
-
-            {!collapsed && applicationExpanded && (
-              <div className="mt-2 space-y-1">
-                {applicationItems.map((item) => (
-                  <SidebarItem key={item.id} item={item} isSubItem />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Settings */}
-          <div className="pt-4">
-            <SidebarItem
-              item={{
-                id: "settings",
-                label: "Settings",
-                icon: Settings,
-                color: "text-gray-600",
-                bgColor: "hover:bg-gray-100",
-              }}
-            />
-          </div>
-        </div>
-      </div>
 
       {/* User Profile */}
-      {!collapsed && (
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100">
-            <Avatar className="h-10 w-10 ring-2 ring-blue-200">
+      <div className="p-4 border-b border-gray-200">
+        {!collapsed ? (
+          <div className="flex items-center gap-3">
+            <Avatar className="h-10 w-10">
               <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg"} />
-              <AvatarFallback className="bg-gradient-to-br from-blue-600 to-purple-600 text-white font-bold">
-                {userProfile?.name?.charAt(0)?.toUpperCase() || "T"}
+              <AvatarFallback className="bg-blue-100 text-blue-700">
+                {userProfile?.name
+                  ?.split(" ")
+                  .map((n: string) => n[0])
+                  .join("")
+                  .toUpperCase() || "T"}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{userProfile?.name || "Teacher"}</p>
-              <p className="text-xs text-gray-500 truncate">Teacher</p>
+              <p className="font-medium text-gray-900 truncate">{userProfile?.name || "Teacher"}</p>
+              <p className="text-xs text-gray-500 truncate">{userProfile?.email}</p>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex justify-center">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg"} />
+              <AvatarFallback className="bg-blue-100 text-blue-700 text-sm">
+                {userProfile?.name
+                  ?.split(" ")
+                  .map((n: string) => n[0])
+                  .join("")
+                  .toUpperCase() || "T"}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        {menuItems.map((item) => (
+          <div key={item.id}>
+            {renderMenuItem(item)}
+            {!collapsed && item.submenu && isSubmenuActive(item) && (
+              <div className="mt-1 space-y-1">{item.submenu.map((subItem: any) => renderMenuItem(subItem, true))}</div>
+            )}
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-gray-200 space-y-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleSignOut}
+          className={cn(
+            "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50",
+            collapsed && "justify-center px-2",
+          )}
+        >
+          <LogOut className="h-4 w-4" />
+          {!collapsed && <span className="ml-2">Sign Out</span>}
+        </Button>
+      </div>
     </div>
   )
 }

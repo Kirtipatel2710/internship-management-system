@@ -1,374 +1,357 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  FileText,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Users,
-  Award,
-  Eye,
-  TrendingUp,
-  Calendar,
-  Activity,
-  RefreshCw,
-} from "lucide-react"
-import { getTeacherDashboardStats, getTeacherRecentActivities } from "@/lib/supabase-teacher"
-import { toast } from "sonner"
+import { Progress } from "@/components/ui/progress"
+import { Users, FileText, Clock, Bell, Award, BookOpen } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+
+interface Stats {
+  totalStudents: number
+  totalNOCs: number
+  pendingNOCs: number
+  approvedNOCs: number
+  rejectedNOCs: number
+  totalApplications: number
+  pendingApplications: number
+  approvedApplications: number
+  rejectedApplications: number
+}
 
 export function TeacherOverview() {
-  const [stats, setStats] = useState<any>(null)
-  const [recentNocs, setRecentNocs] = useState<any[]>([])
-  const [recentApplications, setRecentApplications] = useState<any[]>([])
+  const [stats, setStats] = useState<Stats>({
+    totalStudents: 0,
+    totalNOCs: 0,
+    pendingNOCs: 0,
+    approvedNOCs: 0,
+    rejectedNOCs: 0,
+    totalApplications: 0,
+    pendingApplications: 0,
+    approvedApplications: 0,
+    rejectedApplications: 0,
+  })
   const [loading, setLoading] = useState(true)
+  const [recentActivities, setRecentActivities] = useState<any[]>([])
 
   useEffect(() => {
-    fetchDashboardData()
+    fetchStats()
+    fetchRecentActivities()
   }, [])
 
-  const fetchDashboardData = async () => {
+  const fetchStats = async () => {
     try {
-      setLoading(true)
-      const [dashboardStats, recentActivities] = await Promise.all([
-        getTeacherDashboardStats(),
-        getTeacherRecentActivities(),
-      ])
+      // Fetch NOC stats
+      const { data: nocs, error: nocError } = await supabase.from("noc_requests").select("status")
 
-      setStats(dashboardStats)
-      setRecentNocs(recentActivities.recentNOCs)
-      setRecentApplications(recentActivities.recentApplications)
+      if (nocError) throw nocError
+
+      // Fetch application stats
+      const { data: applications, error: appError } = await supabase.from("internship_applications").select("status")
+
+      if (appError) throw appError
+
+      // Fetch student count
+      const { data: students, error: studentError } = await supabase.from("profiles").select("id").eq("role", "student")
+
+      if (studentError) throw studentError
+
+      // Calculate stats
+      const nocStats = nocs?.reduce(
+        (acc, noc) => {
+          acc.total++
+          if (noc.status === "pending") acc.pending++
+          else if (noc.status === "approved") acc.approved++
+          else if (noc.status === "rejected") acc.rejected++
+          return acc
+        },
+        { total: 0, pending: 0, approved: 0, rejected: 0 },
+      ) || { total: 0, pending: 0, approved: 0, rejected: 0 }
+
+      const appStats = applications?.reduce(
+        (acc, app) => {
+          acc.total++
+          if (app.status === "pending") acc.pending++
+          else if (app.status === "approved") acc.approved++
+          else if (app.status === "rejected") acc.rejected++
+          return acc
+        },
+        { total: 0, pending: 0, approved: 0, rejected: 0 },
+      ) || { total: 0, pending: 0, approved: 0, rejected: 0 }
+
+      setStats({
+        totalStudents: students?.length || 0,
+        totalNOCs: nocStats.total,
+        pendingNOCs: nocStats.pending,
+        approvedNOCs: nocStats.approved,
+        rejectedNOCs: nocStats.rejected,
+        totalApplications: appStats.total,
+        pendingApplications: appStats.pending,
+        approvedApplications: appStats.approved,
+        rejectedApplications: appStats.rejected,
+      })
     } catch (error) {
-      console.error("Error fetching dashboard data:", error)
-      toast.error("Failed to load dashboard data")
+      console.error("Error fetching stats:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending_teacher":
-      case "pending_tpo":
-        return (
-          <Badge className="bg-orange-100 text-orange-800 border-orange-200">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        )
-      case "approved":
-        return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
-          </Badge>
-        )
-      case "rejected_teacher":
-      case "rejected_tpo":
-        return (
-          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
-            <XCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
-        )
-      default:
-        return <Badge variant="secondary">{status}</Badge>
+  const fetchRecentActivities = async () => {
+    try {
+      const { data: activities, error } = await supabase
+        .from("noc_requests")
+        .select(`
+          id,
+          status,
+          created_at,
+          profiles!inner(name, email)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      if (error) throw error
+
+      setRecentActivities(activities || [])
+    } catch (error) {
+      console.error("Error fetching recent activities:", error)
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
+  const statCards = [
+    {
+      title: "Total Students",
+      value: stats.totalStudents,
+      icon: Users,
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+    },
+    {
+      title: "Total NOCs",
+      value: stats.totalNOCs,
+      icon: FileText,
+      color: "text-green-600",
+      bgColor: "bg-green-50",
+    },
+    {
+      title: "Pending NOCs",
+      value: stats.pendingNOCs,
+      icon: Clock,
+      color: "text-yellow-600",
+      bgColor: "bg-yellow-50",
+    },
+    {
+      title: "Total Applications",
+      value: stats.totalApplications,
+      icon: BookOpen,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+    },
+  ]
 
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div className="flex items-center justify-center py-12">
-          <RefreshCw className="h-8 w-8 animate-spin text-emerald-600" />
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     )
   }
 
-  const statsCards = [
-    {
-      title: "Total NOCs",
-      value: stats?.nocs?.total || 0,
-      description: "All time requests",
-      icon: FileText,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
-      trend: "All requests",
-      gradient: "from-blue-500 to-blue-600",
-    },
-    {
-      title: "Pending NOCs",
-      value: stats?.nocs?.pending || 0,
-      description: "Awaiting your review",
-      icon: Clock,
-      color: "text-orange-600",
-      bgColor: "bg-orange-100",
-      trend: "Need attention",
-      gradient: "from-orange-500 to-orange-600",
-    },
-    {
-      title: "Approved NOCs",
-      value: stats?.nocs?.approved || 0,
-      description: "Successfully approved",
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
-      trend: "Completed",
-      gradient: "from-green-500 to-green-600",
-    },
-    {
-      title: "Rejected NOCs",
-      value: stats?.nocs?.rejected || 0,
-      description: "Declined requests",
-      icon: XCircle,
-      color: "text-red-600",
-      bgColor: "bg-red-100",
-      trend: "Declined",
-      gradient: "from-red-500 to-red-600",
-    },
-    {
-      title: "Total Applications",
-      value: stats?.applications?.total || 0,
-      description: "All applications",
-      icon: Users,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
-      trend: "All time",
-      gradient: "from-purple-500 to-purple-600",
-    },
-    {
-      title: "Pending Applications",
-      value: stats?.applications?.pending || 0,
-      description: "Need your review",
-      icon: Clock,
-      color: "text-orange-600",
-      bgColor: "bg-orange-100",
-      trend: "Awaiting",
-      gradient: "from-orange-500 to-orange-600",
-    },
-    {
-      title: "Approved Applications",
-      value: stats?.applications?.approved || 0,
-      description: "Successfully approved",
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
-      trend: "Approved",
-      gradient: "from-green-500 to-green-600",
-    },
-    {
-      title: "Rejected Applications",
-      value: stats?.applications?.rejected || 0,
-      description: "Declined applications",
-      icon: XCircle,
-      color: "text-red-600",
-      bgColor: "bg-red-100",
-      trend: "Declined",
-      gradient: "from-red-500 to-red-600",
-    },
-  ]
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-emerald-600 via-blue-600 to-indigo-600 rounded-3xl p-8 text-white">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative z-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                Welcome back, Teacher!
-                <Activity className="h-8 w-8 animate-pulse" />
-              </h1>
-              <p className="text-emerald-100 text-lg mb-4">
-                You have{" "}
-                <span className="font-bold text-white">
-                  {(stats?.nocs?.pending || 0) + (stats?.applications?.pending || 0)} items
-                </span>{" "}
-                pending your review today.
-              </p>
-              <div className="flex items-center gap-4">
-                <Badge className="bg-white/20 text-white border-white/30 px-4 py-2">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  {new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchDashboardData}
-                  className="bg-white/10 border-white/30 text-white hover:bg-white/20"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-            <div className="hidden lg:block">
-              <div className="w-32 h-32 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-sm">
-                <Award className="w-16 h-16 text-white" />
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-white">
+        <h1 className="text-2xl font-bold mb-2">Welcome to Teacher Dashboard</h1>
+        <p className="text-blue-100">Manage student NOCs and internship applications efficiently</p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {statsCards.map((stat, index) => (
-          <Card
-            key={index}
-            className="hover:shadow-xl transition-all duration-300 border-0 bg-white/80 backdrop-blur-sm group hover:scale-105"
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-              <div
-                className={`p-3 rounded-xl bg-gradient-to-r ${stat.gradient} shadow-lg group-hover:scale-110 transition-transform duration-300`}
-              >
-                <stat.icon className="h-5 w-5 text-white" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-gray-900 mb-1">{stat.value}</div>
-              <p className="text-sm text-gray-500 mb-3">{stat.description}</p>
-              <div className="flex items-center text-xs text-gray-600 font-medium">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                {stat.trend}
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {statCards.map((stat, index) => (
+          <Card key={index} className="hover:shadow-lg transition-shadow">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+                  <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
+                </div>
+                <div className={`p-3 rounded-full ${stat.bgColor}`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Recent Activity */}
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* Recent NOC Requests */}
-        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+      {/* Detailed Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* NOC Management Overview */}
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600">
-                <FileText className="h-5 w-5 text-white" />
-              </div>
-              Recent NOC Requests
+              <FileText className="h-5 w-5" />
+              NOC Management
             </CardTitle>
-            <CardDescription>Latest NOC requests requiring your attention</CardDescription>
+            <CardDescription>Overview of NOC requests status</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {recentNocs.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No recent NOC requests</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Pending</span>
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                  {stats.pendingNOCs}
+                </Badge>
               </div>
-            ) : (
-              recentNocs.map((noc: any) => (
-                <div
-                  key={noc.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200 group"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{noc.profiles?.name || "Unknown Student"}</p>
-                    <p className="text-sm text-gray-500">
-                      {noc.company_name} - {noc.internship_role}
-                    </p>
-                    <p className="text-xs text-gray-400">{formatDate(noc.created_at)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(noc.status)}
-                    <Button variant="ghost" size="sm" className="group-hover:bg-blue-50">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
+              <Progress value={(stats.pendingNOCs / Math.max(stats.totalNOCs, 1)) * 100} className="h-2" />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Approved</span>
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  {stats.approvedNOCs}
+                </Badge>
+              </div>
+              <Progress value={(stats.approvedNOCs / Math.max(stats.totalNOCs, 1)) * 100} className="h-2" />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Rejected</span>
+                <Badge variant="secondary" className="bg-red-100 text-red-800">
+                  {stats.rejectedNOCs}
+                </Badge>
+              </div>
+              <Progress value={(stats.rejectedNOCs / Math.max(stats.totalNOCs, 1)) * 100} className="h-2" />
+            </div>
           </CardContent>
         </Card>
 
-        {/* Recent Applications */}
-        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+        {/* Application Management Overview */}
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600">
-                <Users className="h-5 w-5 text-white" />
-              </div>
-              Recent Applications
+              <BookOpen className="h-5 w-5" />
+              Application Management
             </CardTitle>
-            <CardDescription>Latest internship applications for review</CardDescription>
+            <CardDescription>Overview of internship applications</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {recentApplications.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No recent applications</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Pending</span>
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                  {stats.pendingApplications}
+                </Badge>
               </div>
-            ) : (
-              recentApplications.map((app: any) => (
-                <div
-                  key={app.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200 group"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{app.profiles?.name || "Unknown Student"}</p>
-                    <p className="text-sm text-gray-500">{app.internship_opportunities?.title || "Unknown Position"}</p>
-                    <p className="text-xs text-gray-400">{formatDate(app.created_at)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(app.status)}
-                    <Button variant="ghost" size="sm" className="group-hover:bg-purple-50">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
+              <Progress
+                value={(stats.pendingApplications / Math.max(stats.totalApplications, 1)) * 100}
+                className="h-2"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Approved</span>
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  {stats.approvedApplications}
+                </Badge>
+              </div>
+              <Progress
+                value={(stats.approvedApplications / Math.max(stats.totalApplications, 1)) * 100}
+                className="h-2"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Rejected</span>
+                <Badge variant="secondary" className="bg-red-100 text-red-800">
+                  {stats.rejectedApplications}
+                </Badge>
+              </div>
+              <Progress
+                value={(stats.rejectedApplications / Math.max(stats.totalApplications, 1)) * 100}
+                className="h-2"
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+      {/* Recent Activities */}
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-600">
-              <Award className="h-5 w-5 text-white" />
-            </div>
-            Quick Actions
+            <Bell className="h-5 w-5" />
+            Recent Activities
           </CardTitle>
-          <CardDescription>Frequently used actions for efficient workflow</CardDescription>
+          <CardDescription>Latest NOC requests and updates</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button className="h-20 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 flex-col gap-2 group hover:scale-105 transition-all duration-300 shadow-lg">
-              <FileText className="h-6 w-6 group-hover:scale-110 transition-transform" />
-              <span className="font-medium">Review NOCs</span>
+          {recentActivities.length > 0 ? (
+            <div className="space-y-4">
+              {recentActivities.map((activity, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-full">
+                      <FileText className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">NOC request from {activity.profiles?.name || "Unknown"}</p>
+                      <p className="text-xs text-gray-500">{new Date(activity.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <Badge
+                    variant={
+                      activity.status === "approved"
+                        ? "default"
+                        : activity.status === "rejected"
+                          ? "destructive"
+                          : "secondary"
+                    }
+                  >
+                    {activity.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-4">No recent activities</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+          <CardDescription>Common tasks and shortcuts</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Button variant="outline" className="h-auto p-4 flex flex-col items-center gap-2 bg-transparent">
+              <Clock className="h-6 w-6" />
+              <span>Review Pending NOCs</span>
             </Button>
-            <Button className="h-20 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 flex-col gap-2 group hover:scale-105 transition-all duration-300 shadow-lg">
-              <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
-              <span className="font-medium">Review Applications</span>
+            <Button variant="outline" className="h-auto p-4 flex flex-col items-center gap-2 bg-transparent">
+              <BookOpen className="h-6 w-6" />
+              <span>Check Applications</span>
             </Button>
-            <Button className="h-20 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 flex-col gap-2 group hover:scale-105 transition-all duration-300 shadow-lg">
-              <CheckCircle className="h-6 w-6 group-hover:scale-110 transition-transform" />
-              <span className="font-medium">Approved Items</span>
-            </Button>
-            <Button className="h-20 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 flex-col gap-2 group hover:scale-105 transition-all duration-300 shadow-lg">
-              <Activity className="h-6 w-6 group-hover:scale-110 transition-transform" />
-              <span className="font-medium">View Reports</span>
+            <Button variant="outline" className="h-auto p-4 flex flex-col items-center gap-2 bg-transparent">
+              <Award className="h-6 w-6" />
+              <span>Generate Reports</span>
             </Button>
           </div>
         </CardContent>

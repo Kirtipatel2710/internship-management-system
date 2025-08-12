@@ -3,81 +3,99 @@
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
-import { ModernTeacherSidebar } from "@/components/teacher/modern-teacher-sidebar"
-import { ModernTeacherTopBar } from "@/components/teacher/modern-teacher-topbar"
+import { supabase } from "@/lib/supabase"
+import { TeacherSidebar } from "@/components/teacher/teacher-sidebar"
+import { TeacherTopBar } from "@/components/teacher/teacher-top-bar"
 import { TeacherOverview } from "@/components/teacher/teacher-overview"
 import { NOCManagement } from "@/components/teacher/noc-management"
 import { ApplicationManagement } from "@/components/teacher/application-management"
 import { TeacherSettings } from "@/components/teacher/teacher-settings"
-import { cn } from "@/lib/utils"
+import { Loader2 } from "lucide-react"
 
 export default function TeacherDashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [activeSection, setActiveSection] = useState("overview")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [userProfile, setUserProfile] = useState(null)
-
-  // Dev override email for testing
-  const DEV_OVERRIDE_EMAIL = "kirteekumarmukeshbhaipatel@gmail.com"
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    if (status === "loading") return
+    setMounted(true)
+  }, [])
 
-    if (!session) {
-      router.push("/auth/error")
-      return
-    }
+  useEffect(() => {
+    if (!mounted) return
 
-    // Check if user has teacher role or is dev override
-    const checkAccess = async () => {
+    const checkAuth = async () => {
+      if (status === "loading") return
+
+      if (status === "unauthenticated") {
+        router.push("/auth/signin")
+        return
+      }
+
+      if (!session?.user?.email) {
+        router.push("/auth/signin")
+        return
+      }
+
       try {
+        // Fetch user profile
         const { data: profile, error } = await supabase
           .from("profiles")
           .select("*")
-          .eq("email", session.user?.email)
+          .eq("email", session.user.email)
           .single()
 
-        if (error || !profile) {
-          console.error("Profile not found:", error)
-          router.push("/auth/error?error=unauthorized")
+        if (error) {
+          console.error("Error fetching profile:", error)
+          router.push("/auth/signin")
           return
         }
 
-        // Allow access for teachers or dev override email
-        if (profile.role !== "teacher" && session.user?.email !== DEV_OVERRIDE_EMAIL) {
-          router.push("/auth/error?error=unauthorized")
+        if (!profile || profile.role !== "teacher") {
+          console.error("User is not a teacher or profile not found")
+          router.push("/auth/signin")
           return
         }
 
         setUserProfile(profile)
-        setLoading(false)
       } catch (error) {
-        console.error("Access check failed:", error)
-        router.push("/auth/error?error=unauthorized")
+        console.error("Error in checkAuth:", error)
+        router.push("/auth/signin")
+      } finally {
+        setLoading(false)
       }
     }
 
-    checkAccess()
-  }, [session, status, router])
-
-  // Handle responsive sidebar
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setSidebarCollapsed(true)
-      }
-    }
-
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+    checkAuth()
+  }, [session, status, router, mounted])
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
+  }
+
+  if (!mounted || loading || status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-center">
+          <Loader2 className="h-16 w-16 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading teacher dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!userProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-white to-red-50">
+        <div className="text-center">
+          <p className="text-red-600 text-xl">Access denied. Teacher account required.</p>
+        </div>
+      </div>
+    )
   }
 
   const renderContent = () => {
@@ -95,54 +113,42 @@ export default function TeacherDashboard() {
       case "rejected-applications":
         return <ApplicationManagement activeView={activeSection} />
       case "settings":
-        return <TeacherSettings userProfile={userProfile} />
+        return <TeacherSettings />
       default:
         return <TeacherOverview />
     }
   }
 
-  if (loading || status === "loading") {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-center space-y-6">
-          <div className="relative">
-            <div className="animate-spin rounded-full h-20 w-20 border-4 border-emerald-200 border-t-emerald-600 mx-auto"></div>
-            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-600 to-blue-600 opacity-20 animate-pulse"></div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xl font-semibold text-gray-800">Loading Teacher Dashboard</p>
-            <p className="text-gray-600">Preparing your management portal...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50/30 via-white to-blue-50/30">
-      {/* Sidebar */}
-      <ModernTeacherSidebar
-        activeSection={activeSection}
-        onSectionChange={setActiveSection}
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
-        userProfile={userProfile}
-      />
+    <div className="min-h-screen bg-gray-50">
+      <div className="flex">
+        {/* Sidebar */}
+        <div
+          className={`${
+            sidebarCollapsed ? "w-20" : "w-64"
+          } transition-all duration-300 ease-in-out bg-white shadow-lg border-r border-gray-200 fixed left-0 top-0 h-full z-40`}
+        >
+          <TeacherSidebar
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            collapsed={sidebarCollapsed}
+            userProfile={userProfile}
+          />
+        </div>
 
-      {/* Main Content */}
-      <div className={cn("transition-all duration-300 ease-in-out", sidebarCollapsed ? "lg:ml-16" : "lg:ml-80")}>
-        {/* Top Bar */}
-        <ModernTeacherTopBar
-          activeSection={activeSection}
-          onToggleSidebar={toggleSidebar}
-          sidebarCollapsed={sidebarCollapsed}
-          userProfile={userProfile}
-        />
+        {/* Main Content */}
+        <div className={`flex-1 ${sidebarCollapsed ? "ml-20" : "ml-64"} transition-all duration-300 ease-in-out`}>
+          {/* Top Bar */}
+          <TeacherTopBar
+            activeSection={activeSection}
+            onToggleSidebar={toggleSidebar}
+            sidebarCollapsed={sidebarCollapsed}
+            userProfile={userProfile}
+          />
 
-        {/* Content Area */}
-        <main className="p-6 lg:p-8 min-h-[calc(100vh-80px)]">
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
-        </main>
+          {/* Content */}
+          <main className="p-6">{renderContent()}</main>
+        </div>
       </div>
     </div>
   )
